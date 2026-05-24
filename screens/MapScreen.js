@@ -52,6 +52,7 @@ export default function MapScreen({ navigation }) {
   const handleMessage = (event) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
+      if (data.type === 'JS_ERROR') { alert('지도 에러: ' + data.msg); return; }
       if (data.type === 'MARKER_CLICK') {
         navigation.navigate('Detail', { buildingId: data.id });
       } else if (data.type === 'LONG_PRESS') {
@@ -102,8 +103,15 @@ export default function MapScreen({ navigation }) {
 </head>
 <body>
   <div id="map"></div>
-  <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_API_KEY}&autoload=false"></script>
+   <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_API_KEY}&autoload=false"></script>
   <script>
+    window.onerror = function(msg, src, line) {
+      window.ReactNativeWebView.postMessage(JSON.stringify({ type:'JS_ERROR', msg: msg + ' @' + line }));
+      return true;
+    };
+    if (typeof kakao === 'undefined') {
+      window.ReactNativeWebView.postMessage(JSON.stringify({ type:'JS_ERROR', msg: 'kakao SDK 로드 실패 (네트워크/도메인)' }));
+    }
     var map, myMarker, myCircle, currentOverlay;
     var longPressTimer = null;
 
