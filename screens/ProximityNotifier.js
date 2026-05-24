@@ -66,9 +66,11 @@ export default function ProximityNotifier() {
     return () => cleanup();
   }, []);
 
-  const setup = async () => {
+ const setup = async () => {
+    console.log('✅ ProximityNotifier 시작');
     // 알림 권한
     const { status: notifStatus } = await Notifications.requestPermissionsAsync();
+    console.log('알림 권한:', notifStatus);
     if (notifStatus !== 'granted') {
       console.warn('알림 권한 거부됨');
       return;

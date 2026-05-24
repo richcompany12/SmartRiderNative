@@ -1,4 +1,4 @@
-package com.richcompany.SmartRiderNative3
+package com.richcompany.smartridernative3
 
 import android.os.Build
 import android.os.Bundle
