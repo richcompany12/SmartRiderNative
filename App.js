@@ -8,6 +8,7 @@ import DetailScreen from './screens/DetailScreen';
 import MapScreen from './screens/MapScreen';
 import LoginScreen from './screens/LoginScreen';
 import ProximityNotifier from './screens/ProximityNotifier';
+import LocationPickerScreen from './screens/LocationPickerScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -16,7 +17,6 @@ function AppNavigator() {
 
   return (
     <>
-      {user && <ProximityNotifier />}
       <Stack.Navigator>
         {user ? (
           <>
@@ -25,11 +25,13 @@ function AppNavigator() {
             <Stack.Screen name="Register" component={RegisterScreen} options={{ title: '건물 등록' }} />
             <Stack.Screen name="Detail" component={DetailScreen} options={{ title: '상세 정보' }} />
             <Stack.Screen name="Map" component={MapScreen} options={{ title: '지도' }} />
+            <Stack.Screen name="LocationPicker" component={LocationPickerScreen} options={{ title: '위치 선택' }} />
           </>
         ) : (
           <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
         )}
       </Stack.Navigator>
+      {user && <ProximityNotifier />}
     </>
   );
 }

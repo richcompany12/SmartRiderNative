@@ -1,5 +1,6 @@
 export const ADMIN_UID = "jWzcX90fauhcefeAkUWSqoewn7V2";
 export const ADMIN_UIDS = [
+  "kSeIdvGyZkPceeKFBhbusVSIJOe2",
   "jWzcX90fauhcefeAkUWSqoewn7V2",
   "MsrzbIrzUfeAecSwXt6pX88d9mY2",
   "fkvDpI9MBUeWolC2EqgjcdOXKxa2",

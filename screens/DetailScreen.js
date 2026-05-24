@@ -13,13 +13,13 @@ export default function DetailScreen({ navigation, route }) {
   const [editMode, setEditMode] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
+  const [locationChanged, setLocationChanged] = useState(false);
 
   const isAdmin = auth.currentUser && ADMIN_UIDS.includes(auth.currentUser.uid);
 
   useEffect(() => {
     getBuilding(buildingId).then(data => {
       if (!data) { navigation.goBack(); return; }
-      // 위치 정보 숫자 변환
       if (data.location) {
         data.location = {
           lat: parseFloat(String(data.location.lat)),
@@ -35,6 +35,7 @@ export default function DetailScreen({ navigation, route }) {
     try {
       await updateBuilding({ ...building, timestamp: Date.now() });
       setEditMode(false);
+      setLocationChanged(false);
       setSaveMsg('저장 완료!');
       setTimeout(() => setSaveMsg(''), 2000);
     } catch (e) {
@@ -60,6 +61,17 @@ export default function DetailScreen({ navigation, route }) {
   const handleShare = () => {
     Share.share({
       message: `[스마트 라이더]\n건물명: ${building.name}\n출입정보: ${building.memo || '없음'}`
+    });
+  };
+
+  // 지도 위치 수정 화면으로 이동
+  const openLocationPicker = () => {
+    navigation.navigate('LocationPicker', {
+      initialLocation: building.location || null,
+      onPicked: (loc) => {
+        setBuilding(prev => ({ ...prev, location: loc }));
+        setLocationChanged(true);
+      }
     });
   };
 
@@ -109,11 +121,26 @@ export default function DetailScreen({ navigation, route }) {
             multiline
           />
 
+          {/* 지도 위치 수정 */}
+          <TouchableOpacity style={styles.btnLocation} onPress={openLocationPicker}>
+            <Text style={styles.btnLocationText}>📍 지도 위치 수정</Text>
+          </TouchableOpacity>
+          {building.location && (
+            <Text style={styles.coordText}>
+              위도: {building.location.lat?.toFixed(6)}, 경도: {building.location.lng?.toFixed(6)}
+            </Text>
+          )}
+          {locationChanged && (
+            <View style={styles.locChangedBox}>
+              <Text style={styles.locChangedText}>위치 정보가 변경되었습니다. 저장 버튼을 눌러 완료하세요.</Text>
+            </View>
+          )}
+
           <View style={styles.btnRow}>
             <TouchableOpacity style={styles.btnSave} onPress={handleSave} disabled={saving}>
               {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnSaveText}>저장</Text>}
             </TouchableOpacity>
-            <TouchableOpacity style={styles.btnCancel} onPress={() => setEditMode(false)}>
+            <TouchableOpacity style={styles.btnCancel} onPress={() => { setEditMode(false); setLocationChanged(false); }}>
               <Text style={styles.btnCancelText}>취소</Text>
             </TouchableOpacity>
           </View>
@@ -149,12 +176,10 @@ export default function DetailScreen({ navigation, route }) {
             <Image key={i} source={{ uri: img }} style={styles.image} resizeMode="cover" />
           ))}
 
-          {/* 공유 */}
           <TouchableOpacity style={styles.btnShare} onPress={handleShare}>
             <Text style={styles.btnShareText}>공유</Text>
           </TouchableOpacity>
 
-          {/* 관리자만 수정/삭제 */}
           {isAdmin && (
             <View style={styles.btnRow}>
               <TouchableOpacity style={styles.btnEdit} onPress={() => setEditMode(true)}>
@@ -188,6 +213,11 @@ const styles = StyleSheet.create({
   infoLabel: { fontSize: 12, color: '#94a3b8', marginBottom: 4 },
   infoValue: { fontSize: 17, color: '#1e293b', fontWeight: '500' },
   image: { width: '100%', height: 200, borderRadius: 8, marginBottom: 12 },
+  btnLocation: { backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#bfdbfe', padding: 14, borderRadius: 8, alignItems: 'center', marginTop: 16 },
+  btnLocationText: { color: '#2563eb', fontWeight: 'bold', fontSize: 15 },
+  coordText: { fontSize: 13, color: '#475569', marginTop: 8 },
+  locChangedBox: { backgroundColor: '#f1f5f9', padding: 10, borderRadius: 8, marginTop: 8 },
+  locChangedText: { fontSize: 13, color: '#64748b' },
   btnRow: { flexDirection: 'row', gap: 12, marginTop: 16 },
   btnSave: { flex: 1, backgroundColor: '#3b82f6', padding: 14, borderRadius: 8, alignItems: 'center' },
   btnSaveText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
