@@ -3,14 +3,19 @@ import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import * as TaskManager from 'expo-task-manager';
 import { AppState } from 'react-native';
-import { getAllBuildings } from '../firebaseDB';
+import { getCachedBuildings } from '../buildingsCache';
+import { getRadius } from '../settingsCache';
 import ProximityToastOverlay from './ProximityToastOverlay';
 
 const TASK_NAME = 'PROXIMITY_TASK';
-const RADIUS = 30;
 const COOLDOWN = 300000;
 const MAX_TOASTS = 3;
 const AUTO_DISMISS = 15000;
+
+// ── 오탐지 방지용 상수 ──
+const SPEED_THRESHOLD = 2.5; // m/s (약 시속 9km) 미만이어야 "서행/정지"로 인정
+const DWELL_TIME = 3000;     // 반경 안에 3초 이상 머물러야 "도착"으로 인정
+const MAX_CANDIDATES = 3;    // 후보 목록 최대 개수
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -30,20 +35,41 @@ const getDistance = (lat1, lng1, lat2, lng2) => {
 };
 
 const cooldownMap = {};
+const dwellMap = {}; // 건물별 "반경 안에 처음 들어온 시각" 기록
+
+// 반경 안 + 속도 낮음 + 체류시간 충족한 건물들을 가까운 순으로 반환
+const getArrivedCandidates = (myLat, myLng, buildings, speed, now, radius) => {
+  const candidates = [];
+  for (const b of buildings) {
+    if (!b.location?.lat || !b.location?.lng) continue;
+    const dist = getDistance(myLat, myLng, b.location.lat, b.location.lng);
+
+    if (dist <= radius) {
+      if (!dwellMap[b.id]) dwellMap[b.id] = now;
+      const dwell = now - dwellMap[b.id];
+      if (speed < SPEED_THRESHOLD && dwell > DWELL_TIME) {
+        candidates.push({ ...b, dist });
+      }
+    } else {
+      delete dwellMap[b.id]; // 반경 벗어나면 체류시간 초기화
+    }
+  }
+  return candidates.sort((a, b) => a.dist - b.dist).slice(0, MAX_CANDIDATES);
+};
 
 // 백그라운드 태스크 (시스템 알림)
 TaskManager.defineTask(TASK_NAME, async ({ data, error }) => {
   if (error || !data) return;
   const { locations } = data;
-  const { latitude: myLat, longitude: myLng } = locations[0].coords;
+  const { latitude: myLat, longitude: myLng, speed } = locations[0].coords;
   const now = Date.now();
   try {
-    const buildings = await getAllBuildings();
-    for (const b of buildings) {
-      if (!b.location?.lat || !b.location?.lng) continue;
-      const dist = getDistance(myLat, myLng, b.location.lat, b.location.lng);
+    const [buildings, radius] = await Promise.all([getCachedBuildings(), getRadius()]);
+    const candidates = getArrivedCandidates(myLat, myLng, buildings, speed || 0, now, radius);
+
+    for (const b of candidates) {
       const lastTime = cooldownMap[b.id] || 0;
-      if (dist <= RADIUS && now - lastTime > COOLDOWN) {
+      if (now - lastTime > COOLDOWN) {
         cooldownMap[b.id] = now;
         await Notifications.scheduleNotificationAsync({
           content: {
@@ -76,17 +102,19 @@ export default function ProximityNotifier({ navigation }) {
     delete timerRefs.current[id];
   }, []);
 
-  const addToast = useCallback((building) => {
-    console.log('🔔 addToast 호출됨:', building.name);   // ← 이 줄만 추가
+  const addToast = useCallback((candidates) => {
     const now = Date.now();
-    const lastToast = toastCooldown.current[building.id] || 0;
-    if (now - lastToast < COOLDOWN) return;
-    toastCooldown.current[building.id] = now;
+    const fresh = candidates.filter(b => now - (toastCooldown.current[b.id] || 0) > COOLDOWN);
+    if (fresh.length === 0) return;
+    fresh.forEach(b => { toastCooldown.current[b.id] = now; });
 
-    const id = `${building.id}_${now}`;
+    const id = `toast_${now}`;
+    const toast = fresh.length === 1
+      ? { id, type: 'single', buildingId: fresh[0].id, name: fresh[0].name, memo: fresh[0].memo || '' }
+      : { id, type: 'cluster', candidates: fresh.map(b => ({ buildingId: b.id, name: b.name, memo: b.memo || '' })) };
+
     setToasts(prev => {
-      if (prev.some(t => t.buildingId === building.id)) return prev;
-      const next = [{ id, buildingId: building.id, name: building.name, memo: building.memo || '' }, ...prev];
+      const next = [toast, ...prev];
       if (next.length > MAX_TOASTS) {
         const removed = next.pop();
         clearTimeout(timerRefs.current[removed.id]);
@@ -97,13 +125,21 @@ export default function ProximityNotifier({ navigation }) {
     timerRefs.current[id] = setTimeout(() => dismiss(id), AUTO_DISMISS);
   }, [dismiss]);
 
+  const selectFromCluster = useCallback((toastId, candidate) => {
+    clearTimeout(timerRefs.current[toastId]);
+    delete timerRefs.current[toastId];
+    setToasts(prev => prev.map(t => t.id === toastId
+      ? { id: toastId, type: 'single', buildingId: candidate.buildingId, name: candidate.name, memo: candidate.memo }
+      : t
+    ));
+  }, []);
+
   useEffect(() => {
     setup();
     return () => cleanup();
   }, []);
 
   const setup = async () => {
-    console.log('✅ ProximityNotifier 시작');
     const { status: notifStatus } = await Notifications.requestPermissionsAsync();
     if (notifStatus !== 'granted') return;
 
@@ -129,32 +165,25 @@ export default function ProximityNotifier({ navigation }) {
       }
     }
 
-    // 포그라운드 감지 (토스트용)
     startForegroundWatch();
   };
 
   const startForegroundWatch = async () => {
-    const buildings = await getAllBuildings();
+    const buildings = await getCachedBuildings();
     watchRef.current = await Location.watchPositionAsync(
       { accuracy: Location.Accuracy.High, distanceInterval: 10, timeInterval: 15000 },
-async (loc) => {
-  console.log('📍 포그라운드 위치 업데이트');  // ← 추가
-  if (appState.current !== 'active') return;
-        const { latitude: myLat, longitude: myLng } = loc.coords;
+      async (loc) => {
+        if (appState.current !== 'active') return;
+        const { latitude: myLat, longitude: myLng, speed } = loc.coords;
         const now = Date.now();
-        for (const b of buildings) {
-          if (!b.location?.lat || !b.location?.lng) continue;
-          const dist = getDistance(myLat, myLng, b.location.lat, b.location.lng);
-          const lastTime = cooldownMap[b.id] || 0;
-          if (dist <= RADIUS && now - lastTime > COOLDOWN) {
-            cooldownMap[b.id] = now;
-            addToast(b);
-          }
+        const radius = await getRadius();
+        const candidates = getArrivedCandidates(myLat, myLng, buildings, speed || 0, now, radius);
+        if (candidates.length > 0) {
+          addToast(candidates);
         }
       }
     );
 
-    // 앱 상태 감지
     AppState.addEventListener('change', nextState => {
       appState.current = nextState;
     });
@@ -171,6 +200,7 @@ async (loc) => {
       toasts={toasts}
       onDismiss={dismiss}
       onTouched={handleTouched}
+      onSelect={selectFromCluster}
       navigation={navigation}
     />
   );

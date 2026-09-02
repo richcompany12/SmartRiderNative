@@ -4,6 +4,7 @@ import {
   TouchableOpacity, StyleSheet
 } from 'react-native';
 import { getAllBuildings } from '../firebaseDB';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const SK_SHORTCUTS = ['SK뷰', 'SK1차', 'SK2차', 'SK3차'];
 
@@ -35,8 +36,10 @@ export default function SearchScreen({ navigation }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [buildings, setBuildings] = useState([]);
   const [showAll, setShowAll] = useState(false);
-  const inputRef = useRef(null);
-
+const [isNumericMode, setIsNumericMode] = useState(true); // 기본 숫자패드
+const insets = useSafeAreaInsets();
+const inputRef = useRef(null);
+ 
   useEffect(() => {
     getAllBuildings().then(list => setBuildings([...list].reverse()));
     setTimeout(() => inputRef.current?.focus(), 300);
@@ -57,6 +60,12 @@ export default function SearchScreen({ navigation }) {
   const displayList = searchTerm.length > 0
     ? results
     : showAll ? buildings : buildings.slice(0, 5);
+  
+  const toggleKeyboard = () => {
+  inputRef.current?.blur();
+  setIsNumericMode(prev => !prev);
+  setTimeout(() => inputRef.current?.focus(), 50);
+};
 
   const handleCopy = (building) => {
     navigation.navigate('Register', {
@@ -92,13 +101,14 @@ export default function SearchScreen({ navigation }) {
 
       {/* 검색창 */}
       <TextInput
-        ref={inputRef}
-        style={styles.input}
-        value={searchTerm}
-        onChangeText={setSearchTerm}
-        placeholder="건물 이름 검색 (초성, 텍스트, 숫자)"
-        placeholderTextColor="#94a3b8"
-      />
+  ref={inputRef}
+  style={styles.input}
+  value={searchTerm}
+  onChangeText={setSearchTerm}
+  placeholder="건물 이름 검색 (초성, 텍스트, 숫자)"
+  placeholderTextColor="#94a3b8"
+  inputMode={isNumericMode ? 'numeric' : 'text'}
+/>
 
       {/* SK 단축키 */}
       <View style={styles.shortcuts}>
@@ -123,19 +133,32 @@ export default function SearchScreen({ navigation }) {
 
       {/* 헤더 */}
       <View style={styles.listHeader}>
-        <Text style={styles.listTitle}>
-          {searchTerm.length > 0
-            ? `검색 결과 ${results.length}개`
-            : showAll ? '모든 건물' : '최근 등록된 건물'}
+  <Text style={styles.listTitle}>
+    {searchTerm.length > 0
+      ? `검색 결과 ${results.length}개`
+      : showAll ? '모든 건물' : '최근 등록된 건물'}
+  </Text>
+  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+    <TouchableOpacity
+      onPress={toggleKeyboard}
+      style={{
+        backgroundColor: isNumericMode ? '#1e40af' : '#f3f4f6',
+        paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12
+      }}
+    >
+      <Text style={{ color: isNumericMode ? '#fff' : '#374151', fontWeight: 'bold', fontSize: 12 }}>
+        {isNumericMode ? '123' : '가나다'}
+      </Text>
+    </TouchableOpacity>
+    {searchTerm.length === 0 && (
+      <TouchableOpacity onPress={() => setShowAll(p => !p)}>
+        <Text style={styles.toggleText}>
+          {showAll ? '최근만 보기' : '모두 보기'}
         </Text>
-        {searchTerm.length === 0 && (
-          <TouchableOpacity onPress={() => setShowAll(p => !p)}>
-            <Text style={styles.toggleText}>
-              {showAll ? '최근만 보기' : '모두 보기'}
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
+      </TouchableOpacity>
+    )}
+  </View>
+</View>
 
       <FlatList
         data={displayList}
@@ -147,9 +170,9 @@ export default function SearchScreen({ navigation }) {
 
       {/* 등록 버튼 */}
       <TouchableOpacity
-        style={styles.registerBtn}
-        onPress={() => navigation.navigate('Register', {})}
-      >
+  style={[styles.registerBtn, { marginBottom: insets.bottom + 8 }]}
+  onPress={() => navigation.navigate('Register', {})}
+>
         <Text style={styles.registerBtnText}>+ 건물 등록</Text>
       </TouchableOpacity>
     </View>
@@ -159,7 +182,7 @@ export default function SearchScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8fafc', padding: 16 },
   title: { fontSize: 24, fontWeight: 'bold', color: '#1e3a5f', marginBottom: 12 },
-  input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, padding: 12, fontSize: 16, marginBottom: 8 },
+  input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, padding: 12, fontSize: 16, marginBottom: 8, color: '#1e293b' },
   shortcuts: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
   shortcutBtn: { backgroundColor: '#fff7ed', borderWidth: 1, borderColor: '#fdba74', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
   shortcutText: { color: '#c2410c', fontSize: 13 },

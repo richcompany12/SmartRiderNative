@@ -4,6 +4,7 @@ import {
   StyleSheet, ActivityIndicator, Alert
 } from 'react-native';
 import { getAllBuildings } from '../firebaseDB';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const ITEMS_PER_PAGE = 8;
 
@@ -23,6 +24,7 @@ export default function HomeScreen({ navigation }) {
   const [buildings, setBuildings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
+  const insets = useSafeAreaInsets();
 
   const loadBuildings = async () => {
     setLoading(true);
@@ -141,7 +143,7 @@ export default function HomeScreen({ navigation }) {
       )}
 
       {/* 새로고침 */}
-      <TouchableOpacity style={styles.refreshBtn} onPress={loadBuildings}>
+      <TouchableOpacity style={[styles.refreshBtn, { marginBottom: insets.bottom + 8 }]} onPress={loadBuildings}>
         <Text style={styles.refreshBtnText}>🔄 새로고침</Text>
       </TouchableOpacity>
     </View>

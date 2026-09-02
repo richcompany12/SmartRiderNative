@@ -4,6 +4,7 @@ import {
   ScrollView, StyleSheet, Alert, ActivityIndicator
 } from 'react-native';
 import { saveBuilding, saveAlertPoint } from '../firebaseDB';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const SPECIAL_CHARS_NAME = ['동', '라인', '-', ',', '1,2라인', '3,4라인', '5,6라인', '7,8라인'];
 const SK_SHORTCUTS = ['SK뷰', 'SK1차', 'SK2차', 'SK3차'];
@@ -19,7 +20,9 @@ export default function RegisterScreen({ navigation, route }) {
   const [shortcut, setShortcut] = useState(buildingData?.shortcut || '');
   const [isSaving, setIsSaving] = useState(false);
   const [activeField, setActiveField] = useState('name'); // 'name' or 'memo'
-
+  const insets = useSafeAreaInsets();
+  const [memoKeyboardMode, setMemoKeyboardMode] = useState('numeric'); // 기본 숫자패드
+ 
   const nameRef = useRef(null);
   const memoRef = useRef(null);
 
@@ -34,6 +37,13 @@ export default function RegisterScreen({ navigation, route }) {
       setMemo(prev => prev + char);
     }
   };
+
+  const toggleMemoKeyboard = () => {
+  const next = memoKeyboardMode === 'numeric' ? 'text' : 'numeric';
+  memoRef.current?.blur();
+  setMemoKeyboardMode(next);
+  setTimeout(() => memoRef.current?.focus(), 50);
+};
 
   const handleSave = async () => {
     if (!name.trim()) {
@@ -110,18 +120,31 @@ export default function RegisterScreen({ navigation, route }) {
       {regMode === 'building' ? (
         <>
           {/* 출입 정보 */}
-          <Text style={styles.label}>출입 정보</Text>
-          <TextInput
-            ref={memoRef}
-            style={styles.input}
-            value={memo}
-            onChangeText={setMemo}
-            onFocus={() => setActiveField('memo')}
-            placeholder="비밀번호 등"
-            placeholderTextColor="#94a3b8"
-            keyboardType="numeric"
-            multiline
-          />
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+  <Text style={styles.label}>출입 정보</Text>
+  <TouchableOpacity
+    onPress={toggleMemoKeyboard}
+    style={{
+      backgroundColor: memoKeyboardMode === 'numeric' ? '#1e40af' : '#f3f4f6',
+      paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12
+    }}
+  >
+    <Text style={{ color: memoKeyboardMode === 'numeric' ? '#fff' : '#374151', fontWeight: 'bold', fontSize: 12 }}>
+      {memoKeyboardMode === 'numeric' ? '123' : '가나다'}
+    </Text>
+  </TouchableOpacity>
+</View>
+<TextInput
+  ref={memoRef}
+  style={styles.input}
+  value={memo}
+  onChangeText={setMemo}
+  onFocus={() => setActiveField('memo')}
+  placeholder="비밀번호 등"
+  placeholderTextColor="#94a3b8"
+  inputMode={memoKeyboardMode}
+  multiline
+/>
           <View style={styles.btnGrid}>
             {SPECIAL_CHARS_MEMO.map(c => (
               <TouchableOpacity key={c} style={styles.shortBtn} onPress={() => insertChar(c)}>
@@ -160,7 +183,7 @@ export default function RegisterScreen({ navigation, route }) {
       )}
 
       {/* 저장/취소 */}
-      <View style={styles.bottomRow}>
+      <View style={[styles.bottomRow, { marginBottom: insets.bottom + 8 }]}>
         <TouchableOpacity style={styles.btnSave} onPress={handleSave} disabled={isSaving}>
           {isSaving
             ? <ActivityIndicator color="#fff" />
