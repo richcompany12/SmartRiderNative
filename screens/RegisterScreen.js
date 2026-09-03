@@ -18,6 +18,16 @@ export default function RegisterScreen({ navigation, route }) {
   const [memo, setMemo] = useState(buildingData?.memo || '');
   const [note, setNote] = useState(buildingData?.note || '');
   const [shortcut, setShortcut] = useState(buildingData?.shortcut || '');
+
+  // 화면이 재사용되는 경우에도 새 buildingData로 폼을 다시 채움
+  useEffect(() => {
+    if (buildingData) {
+      setName(buildingData.name || '');
+      setMemo(buildingData.memo || '');
+      setNote(buildingData.note || '');
+      setShortcut(buildingData.shortcut || '');
+    }
+  }, [route.params?.buildingData]);
   const [isSaving, setIsSaving] = useState(false);
   const [activeField, setActiveField] = useState('name'); // 'name' or 'memo'
   const insets = useSafeAreaInsets();
@@ -59,6 +69,10 @@ export default function RegisterScreen({ navigation, route }) {
         timestamp: Date.now(),
         id: buildingData?.id || Date.now().toString()
       };
+      // 지도에서 넘어온 위치정보가 있을 때만 저장 (리스트 복사등록은 위치 없이 새로 선택하게 둠)
+      if (route.params?.location) {
+        data.location = route.params.location;
+      }
       if (regMode === 'alert') {
         await saveAlertPoint(data);
       } else {

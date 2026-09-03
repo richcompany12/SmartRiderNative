@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/toast_root"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/toast_bg_blue"
+    android:elevation="8dp"
+    android:maxWidth="320dp"
+    android:paddingStart="16dp"
+    android:paddingEnd="12dp"
+    android:paddingTop="10dp"
+    android:paddingBottom="10dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/toast_name"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="🏢 건물명"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:maxLines="2" />
+
+        <TextView
+            android:id="@+id/toast_close"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="×"
+            android:textColor="#9CA3AF"
+            android:textSize="20sp"
+            android:paddingStart="8dp"
+            android:paddingEnd="4dp" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/toast_memo"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:text=""
+        android:textColor="#FDE68A"
+        android:textSize="12sp"
+        android:fontFamily="monospace"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/toast_hint"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:text="✏️ 2초 누르면 상세보기"
+        android:textColor="#6B7280"
+        android:textSize="10sp"
+        android:gravity="center"
+        android:visibility="gone" />
+</LinearLayout>

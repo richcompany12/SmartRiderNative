@@ -2,10 +2,12 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import * as TaskManager from 'expo-task-manager';
-import { AppState } from 'react-native';
+import { AppState, NativeModules, DeviceEventEmitter, Alert } from 'react-native';
 import { getCachedBuildings } from '../buildingsCache';
 import { getRadius } from '../settingsCache';
 import ProximityToastOverlay from './ProximityToastOverlay';
+
+const { ProximityOverlayModule } = NativeModules;
 
 const TASK_NAME = 'PROXIMITY_TASK';
 const COOLDOWN = 300000;
@@ -13,13 +15,13 @@ const MAX_TOASTS = 3;
 const AUTO_DISMISS = 15000;
 
 // ── 오탐지 방지용 상수 ──
-const SPEED_THRESHOLD = 2.5; // m/s (약 시속 9km) 미만이어야 "서행/정지"로 인정
-const DWELL_TIME = 3000;     // 반경 안에 3초 이상 머물러야 "도착"으로 인정
-const MAX_CANDIDATES = 3;    // 후보 목록 최대 개수
+const SPEED_THRESHOLD = 2.5;
+const DWELL_TIME = 3000;
+const MAX_CANDIDATES = 3;
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true,
+    shouldShowAlert: false,
     shouldPlaySound: true,
     shouldSetBadge: false,
   }),
@@ -34,16 +36,15 @@ const getDistance = (lat1, lng1, lat2, lng2) => {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 };
 
-const cooldownMap = {};
-const dwellMap = {}; // 건물별 "반경 안에 처음 들어온 시각" 기록
+const dwellMap = {};
+const overlayCooldownMap = {};
+let isAppActive = true; // 앱이 현재 포그라운드인지 전역 플래그
 
-// 반경 안 + 속도 낮음 + 체류시간 충족한 건물들을 가까운 순으로 반환
 const getArrivedCandidates = (myLat, myLng, buildings, speed, now, radius) => {
   const candidates = [];
   for (const b of buildings) {
     if (!b.location?.lat || !b.location?.lng) continue;
     const dist = getDistance(myLat, myLng, b.location.lat, b.location.lng);
-
     if (dist <= radius) {
       if (!dwellMap[b.id]) dwellMap[b.id] = now;
       const dwell = now - dwellMap[b.id];
@@ -51,13 +52,13 @@ const getArrivedCandidates = (myLat, myLng, buildings, speed, now, radius) => {
         candidates.push({ ...b, dist });
       }
     } else {
-      delete dwellMap[b.id]; // 반경 벗어나면 체류시간 초기화
+      delete dwellMap[b.id];
     }
   }
   return candidates.sort((a, b) => a.dist - b.dist).slice(0, MAX_CANDIDATES);
 };
 
-// 백그라운드 태스크 (시스템 알림)
+// 백그라운드 태스크: 오버레이 토스트를 직접 띄움
 TaskManager.defineTask(TASK_NAME, async ({ data, error }) => {
   if (error || !data) return;
   const { locations } = data;
@@ -66,21 +67,20 @@ TaskManager.defineTask(TASK_NAME, async ({ data, error }) => {
   try {
     const [buildings, radius] = await Promise.all([getCachedBuildings(), getRadius()]);
     const candidates = getArrivedCandidates(myLat, myLng, buildings, speed || 0, now, radius);
+    if (candidates.length === 0) return;
 
-    for (const b of candidates) {
-      const lastTime = cooldownMap[b.id] || 0;
-      if (now - lastTime > COOLDOWN) {
-        cooldownMap[b.id] = now;
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: '🏢 ' + b.name,
-            body: b.memo ? `출입정보: ${b.memo}` : '근처에 등록된 건물이 있습니다',
-            sound: true,
-          },
-          trigger: null,
-        });
-      }
-    }
+    if (isAppActive) return; // 앱이 화면에 떠있으면 인앱 토스트가 대신 뜨니까 오버레이는 건너뜀
+
+    const fresh = candidates.filter(b => now - (overlayCooldownMap[b.id] || 0) > COOLDOWN);
+    if (fresh.length === 0) return;
+    fresh.forEach(b => { overlayCooldownMap[b.id] = now; });
+
+    const id = `overlay_${now}`;
+    const payload = fresh.length === 1
+      ? { id, type: 'single', buildingId: fresh[0].id, name: fresh[0].name, memo: fresh[0].memo || '' }
+      : { id, type: 'cluster', candidates: fresh.map(b => ({ buildingId: b.id, name: b.name, memo: b.memo || '' })) };
+
+    ProximityOverlayModule?.showToast(JSON.stringify(payload));
   } catch (e) {}
 });
 
@@ -136,7 +136,25 @@ export default function ProximityNotifier({ navigation }) {
 
   useEffect(() => {
     setup();
-    return () => cleanup();
+    const sub = DeviceEventEmitter.addListener('ProximityToastDetailRequested', (buildingId) => {
+      navigation?.navigate('Detail', { buildingId });
+    });
+    const appStateSub = AppState.addEventListener('change', (nextState) => {
+      appState.current = nextState;
+      isAppActive = nextState === 'active';
+    });
+    return () => { cleanup(); sub.remove(); appStateSub.remove(); };
+  }, []);
+
+   useEffect(() => {
+    const startOverlayAlways = async () => {
+      if (!ProximityOverlayModule) return;
+      try {
+        const has = await ProximityOverlayModule.hasPermission();
+        if (has) await ProximityOverlayModule.startService();
+      } catch (e) {}
+    };
+    startOverlayAlways();
   }, []);
 
   const setup = async () => {
@@ -183,16 +201,13 @@ export default function ProximityNotifier({ navigation }) {
         }
       }
     );
-
-    AppState.addEventListener('change', nextState => {
-      appState.current = nextState;
-    });
   };
 
   const cleanup = async () => {
     if (watchRef.current) watchRef.current.remove();
     const isRegistered = await TaskManager.isTaskRegisteredAsync(TASK_NAME);
     if (isRegistered) await Location.stopLocationUpdatesAsync(TASK_NAME);
+    try { await ProximityOverlayModule?.stopService(); } catch (e) {}
   };
 
   return (
