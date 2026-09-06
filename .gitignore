@@ -35,6 +35,11 @@ yarn-error.*
 
 # typescript
 *.tsbuildinfo
-±êÇãºêÅäÅ«.txt 
-±êÇãºêÅäÅ«.txt 
-±êÇãºêÅäÅ«.txt 
+# ë¹„ë°€ì •ë³´ (ì ˆëŒ€ ì»¤ë°‹ ê¸ˆì§€)
+*í† í°*.txt
+*token*.txt
+google-services.json
+
+# ë¡œì»¬ ë„êµ¬
+adb
+adb.exe

@@ -1,0 +1,284 @@
+diff --git a/node_modules/expo-location/android/src/main/java/expo/modules/location/services/LocationTaskService.kt b/node_modules/expo-location/android/src/main/java/expo/modules/location/services/LocationTaskService.kt
+index 80647ab..cd31f4f 100644
+--- a/node_modules/expo-location/android/src/main/java/expo/modules/location/services/LocationTaskService.kt
++++ b/node_modules/expo-location/android/src/main/java/expo/modules/location/services/LocationTaskService.kt
+@@ -13,6 +13,7 @@ import android.os.Binder
+ import android.os.Build
+ import android.os.Bundle
+ import android.os.IBinder
++import android.util.Log
+ 
+ class LocationTaskService : Service() {
+   private var mChannelId: String? = null
+@@ -21,6 +22,9 @@ class LocationTaskService : Service() {
+   private val mServiceId = sServiceId++
+   private val mBinder: IBinder = ServiceBinder()
+ 
++  // [PATCH] startForeground를 이미 호출했는지 추적
++  private var mIsForegroundStarted = false
++
+   inner class ServiceBinder : Binder() {
+     val service: LocationTaskService
+       get() = this@LocationTaskService
+@@ -37,6 +41,28 @@ class LocationTaskService : Service() {
+       mChannelId = extras.getString("appId") + ":" + extras.getString("taskName")
+       mKillService = extras.getBoolean("killService", false)
+     }
++
++    // ─────────────────────────────────────────────────────────────
++    // [PATCH] 결함1 회피
++    // 안드로이드는 startForegroundService()로 시작된 서비스가 5초 안에
++    // startForeground()를 부르길 요구한다. 원본은 이걸 비동기 bindService
++    // 콜백(onServiceConnected) 안에서만 호출하기 때문에, 앱 업데이트 직후처럼
++    // 메인 스레드가 JS 번들 로딩으로 바쁘면 5초를 놓쳐서 서비스가
++    // "실행 중이지만 위치 구독은 안 된" 얼어붙은 상태가 된다.
++    // → 여기서 임시 알림으로 먼저 startForeground()를 호출해 데드라인을 지킨다.
++    //   나중에 onServiceConnected가 startForeground(serviceOptions)를 부르면
++    //   같은 ID로 알림이 정상 내용으로 교체된다.
++    // ─────────────────────────────────────────────────────────────
++    if (!mIsForegroundStarted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
++      try {
++        startForeground(mServiceId, buildPlaceholderNotification())
++        mIsForegroundStarted = true
++        Log.i(TAG, "[PATCH] startForeground 즉시 호출 성공 (데드라인 회피)")
++      } catch (e: Exception) {
++        Log.e(TAG, "[PATCH] startForeground 즉시 호출 실패: " + e.message)
++      }
++    }
++
+     return START_REDELIVER_INTENT
+   }
+ 
+@@ -47,6 +73,7 @@ class LocationTaskService : Service() {
+   }
+ 
+   fun stop() {
++    mIsForegroundStarted = false   // [PATCH] 다음 시작 때 다시 호출되도록 리셋
+     stopForeground(true)
+     stopSelf()
+   }
+@@ -61,9 +88,24 @@ class LocationTaskService : Service() {
+   fun startForeground(serviceOptions: Bundle) {
+     val notification = buildServiceNotification(serviceOptions)
+     startForeground(mServiceId, notification)
++    mIsForegroundStarted = true   // [PATCH]
+   }
+ 
+   //region private
++
++  // [PATCH] 정식 알림 내용을 아직 모를 때 쓰는 최소 알림.
++  // mParentContext가 아직 세팅되지 않았을 수 있으므로 this(=Service) 컨텍스트만 쓴다.
++  @TargetApi(26)
++  private fun buildPlaceholderNotification(): Notification {
++    val channelId = mChannelId ?: FALLBACK_CHANNEL_ID
++    prepareChannel(channelId)
++    return Notification.Builder(this, channelId)
++      .setCategory(Notification.CATEGORY_SERVICE)
++      .setSmallIcon(applicationInfo.icon)
++      .setContentTitle(applicationInfo.loadLabel(packageManager).toString())
++      .build()
++  }
++
+   @TargetApi(26)
+   private fun buildServiceNotification(serviceOptions: Bundle): Notification {
+     prepareChannel(mChannelId)
+@@ -80,12 +122,15 @@ class LocationTaskService : Service() {
+       builder.setColorized(false)
+     }
+ 
+-    mParentContext.packageManager.getLaunchIntentForPackage(mParentContext.packageName)?.let {
+-      it.flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+-      // We're defaulting to the behaviour prior API 31 (mutable) even though Android recommends immutability
+-      val mutableFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
+-      val contentIntent = PendingIntent.getActivity(this, 0, it, PendingIntent.FLAG_UPDATE_CURRENT or mutableFlag)
+-      builder.setContentIntent(contentIntent)
++    // [PATCH] mParentContext가 아직 세팅 안 됐을 수 있으므로 방어
++    if (this::mParentContext.isInitialized) {
++      mParentContext.packageManager.getLaunchIntentForPackage(mParentContext.packageName)?.let {
++        it.flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
++        // We're defaulting to the behaviour prior API 31 (mutable) even though Android recommends immutability
++        val mutableFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
++        val contentIntent = PendingIntent.getActivity(this, 0, it, PendingIntent.FLAG_UPDATE_CURRENT or mutableFlag)
++        builder.setContentIntent(contentIntent)
++      }
+     }
+ 
+     return builder.setCategory(Notification.CATEGORY_SERVICE)
+@@ -97,10 +142,11 @@ class LocationTaskService : Service() {
+   private fun prepareChannel(id: String?) {
+     val notificationManager = getSystemService(NOTIFICATION_SERVICE) as? NotificationManager
+       ?: return
++    val channelId = id ?: FALLBACK_CHANNEL_ID   // [PATCH] null 방어
+     val appName = applicationInfo.loadLabel(packageManager).toString()
+-    var channel = notificationManager.getNotificationChannel(id)
++    var channel = notificationManager.getNotificationChannel(channelId)
+     if (channel == null) {
+-      channel = NotificationChannel(id, appName, NotificationManager.IMPORTANCE_LOW)
++      channel = NotificationChannel(channelId, appName, NotificationManager.IMPORTANCE_LOW)
+       channel.description = "Background location notification channel"
+       notificationManager.createNotificationChannel(channel)
+     }
+@@ -116,5 +162,7 @@ class LocationTaskService : Service() {
+ 
+   companion object {
+     private var sServiceId = 481756
++    private const val TAG = "LocationTaskService"           // [PATCH]
++    private const val FALLBACK_CHANNEL_ID = "expo.location.fallback"  // [PATCH]
+   }
+ }
+diff --git a/node_modules/expo-location/android/src/main/java/expo/modules/location/taskConsumers/LocationTaskConsumer.kt b/node_modules/expo-location/android/src/main/java/expo/modules/location/taskConsumers/LocationTaskConsumer.kt
+index e659285..baa8826 100644
+--- a/node_modules/expo-location/android/src/main/java/expo/modules/location/taskConsumers/LocationTaskConsumer.kt
++++ b/node_modules/expo-location/android/src/main/java/expo/modules/location/taskConsumers/LocationTaskConsumer.kt
+@@ -44,6 +44,13 @@ class LocationTaskConsumer(context: Context, taskManagerUtils: TaskManagerUtilsI
+   private var mDeferredDistance = 0.0
+   private val mDeferredLocations: MutableList<Location> = ArrayList()
+   private var mIsHostPaused = true
++
++  // [PATCH] bindService 해제를 위해 연결 객체를 보관한다 (원본은 익명 객체라 unbind 불가 = 누수)
++  private var mServiceConnection: ServiceConnection? = null
++
++  // [PATCH] 백그라운드라 포그라운드 서비스를 못 띄웠을 때 표시해두고, 포그라운드 복귀 시 재시도
++  private var mPendingForegroundServiceStart = false
++
+   private val mLocationClient: FusedLocationProviderClient by lazy {
+     LocationServices.getFusedLocationProviderClient(context)
+   }
+@@ -65,6 +72,7 @@ class LocationTaskConsumer(context: Context, taskManagerUtils: TaskManagerUtilsI
+     mTask = null
+     mPendingIntent = null
+     mLocationRequest = null
++    mPendingForegroundServiceStart = false   // [PATCH]
+   }
+ 
+   override fun setOptions(options: Map<String, Any>) {
+@@ -148,6 +156,7 @@ class LocationTaskConsumer(context: Context, taskManagerUtils: TaskManagerUtilsI
+ 
+     try {
+       mLocationClient.requestLocationUpdates(locationRequest, intent)
++      Log.i(TAG, "[PATCH] requestLocationUpdates 등록 완료")
+     } catch (e: SecurityException) {
+       Log.w(TAG, "Location request has been rejected.", e)
+     }
+@@ -158,6 +167,7 @@ class LocationTaskConsumer(context: Context, taskManagerUtils: TaskManagerUtilsI
+       mLocationClient.removeLocationUpdates(it)
+       it.cancel()
+     }
++    mPendingIntent = null   // [PATCH] 취소된 PendingIntent를 다시 쓰지 않도록
+   }
+ 
+   private fun maybeStartForegroundService() {
+@@ -166,7 +176,14 @@ class LocationTaskConsumer(context: Context, taskManagerUtils: TaskManagerUtilsI
+       return
+     }
+     if (!AppForegroundedSingleton.isForegrounded) {
+-      Log.w(TAG, "Foreground location task cannot be started while the app is in the background!")
++      // ───────────────────────────────────────────────────────────
++      // [PATCH] 결함2 회피
++      // 원본은 여기서 그냥 return 해버려서, 태스크는 "등록됨" 상태인데
++      // mService == null 인 오염된 상태가 영구히 남는다.
++      // → 재시도해야 한다는 사실을 기록해두고 onHostResume에서 복구한다.
++      // ───────────────────────────────────────────────────────────
++      Log.w(TAG, "[PATCH] 백그라운드라 포그라운드 서비스 시작 불가 — 포그라운드 복귀 시 재시도 예약")
++      mPendingForegroundServiceStart = true
+       return
+     }
+     val task = mTask ?: run {
+@@ -198,33 +215,63 @@ class LocationTaskConsumer(context: Context, taskManagerUtils: TaskManagerUtilsI
+       extras.putString("taskName", task.name)
+       extras.putBoolean("killService", serviceOptions.getBoolean("killServiceOnDestroy", false))
+       serviceIntent.putExtras(extras)
+-      context.startForegroundService(serviceIntent)
+-      context.bindService(
+-        serviceIntent,
+-        object : ServiceConnection {
+-          override fun onServiceConnected(name: ComponentName, service: IBinder) {
+-            mService = (service as? ServiceBinder)?.service
+-            mService?.let {
+-              it.setParentContext(context)
+-              it.startForeground(serviceOptions)
+-            }
+-          }
+ 
+-          override fun onServiceDisconnected(name: ComponentName) {
+-            mService?.stop()
+-            mService = null
++      // [PATCH] 익명 객체 대신 참조를 보관해서 나중에 unbindService 할 수 있게 한다
++      val connection = object : ServiceConnection {
++        override fun onServiceConnected(name: ComponentName, service: IBinder) {
++          mService = (service as? ServiceBinder)?.service
++          mService?.let {
++            it.setParentContext(context)
++            it.startForeground(serviceOptions)
++            Log.i(TAG, "[PATCH] 포그라운드 서비스 연결 및 시작 완료")
+           }
+-        },
+-        Context.BIND_AUTO_CREATE
+-      )
++        }
++
++        override fun onServiceDisconnected(name: ComponentName) {
++          Log.w(TAG, "[PATCH] 포그라운드 서비스 연결 끊김")
++          mService?.stop()
++          mService = null
++        }
++      }
++      mServiceConnection = connection
++
++      try {
++        context.startForegroundService(serviceIntent)
++        context.bindService(serviceIntent, connection, Context.BIND_AUTO_CREATE)
++        mPendingForegroundServiceStart = false   // [PATCH] 성공했으니 예약 해제
++      } catch (e: Exception) {
++        // [PATCH] 원본은 예외를 잡지 않아 여기서 터지면 태스크 전체가 죽는다
++        Log.e(TAG, "[PATCH] 포그라운드 서비스 시작 실패: " + e.message)
++        mServiceConnection = null
++        mPendingForegroundServiceStart = true
++      }
+     } else {
+       // Restart the service with new service options.
+       mService?.startForeground(options.getArguments(FOREGROUND_SERVICE_KEY).toBundle())
++      mPendingForegroundServiceStart = false   // [PATCH]
+     }
+   }
+ 
+   private fun stopForegroundService() {
++    // ─────────────────────────────────────────────────────────────
++    // [PATCH] 결함3 회피 (이슈 원문에 없던 것)
++    // 원본은 mService?.stop() 만 하고 참조를 남겨둔다. 그래서 다음에
++    // maybeStartForegroundService()가 불리면 mService != null 이라
++    // else 가지로 빠져서 "이미 죽은 서비스"에 startForeground를 호출하고,
++    // 실제로는 아무 일도 일어나지 않는다. bindService도 해제되지 않아 누수된다.
++    // → 확실히 정리하고 참조를 비운다.
++    // ─────────────────────────────────────────────────────────────
+     mService?.stop()
++    mServiceConnection?.let { conn ->
++      try {
++        context?.unbindService(conn)
++      } catch (e: Exception) {
++        Log.w(TAG, "[PATCH] unbindService 실패(무시): " + e.message)
++      }
++    }
++    mServiceConnection = null
++    mService = null
++    Log.i(TAG, "[PATCH] 포그라운드 서비스 정리 완료")
+   }
+ 
+   private fun deferLocations(locations: List<Location>) {
+@@ -300,6 +347,16 @@ class LocationTaskConsumer(context: Context, taskManagerUtils: TaskManagerUtilsI
+ 
+   override fun onHostResume() {
+     mIsHostPaused = false
++
++    // [PATCH] 백그라운드에서 못 띄웠던 포그라운드 서비스를 지금 되살린다.
++    // 이게 결함2의 핵심 복구 지점이다.
++    if (mPendingForegroundServiceStart && mTask != null) {
++      Log.i(TAG, "[PATCH] 포그라운드 복귀 — 예약된 포그라운드 서비스 시작 재시도")
++      mPendingForegroundServiceStart = false
++      startLocationUpdates()
++      maybeStartForegroundService()
++    }
++
+     maybeReportDeferredLocations()
+   }
+ 

@@ -65,16 +65,46 @@ class ProximityOverlayModule(private val reactContext: ReactApplicationContext)
         }
     }
 
+    // 건물 목록과 반경을 서비스에 넘긴다.
+    // payloadJson 형식: {"radius":20,"buildings":[{"id","name","memo","lat","lng"}, ...]}
+    @ReactMethod
+    fun setBuildings(payloadJson: String, promise: Promise) {
+        try {
+            val intent = Intent(reactContext, ProximityOverlayService::class.java).apply {
+                action = ProximityOverlayService.ACTION_SET_BUILDINGS
+                putExtra(ProximityOverlayService.EXTRA_PAYLOAD, payloadJson)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                reactContext.startForegroundService(intent)
+            } else {
+                reactContext.startService(intent)
+            }
+            promise.resolve("success")
+        } catch (e: Exception) {
+            promise.reject("ERROR", e.message)
+        }
+    }
+
     @ReactMethod
     fun showToast(payloadJson: String) {
         try {
-            val intent = Intent(ProximityOverlayService.ACTION_SHOW_TOAST).apply {
+            val intent = Intent(reactContext, ProximityOverlayService::class.java).apply {
+                action = ProximityOverlayService.ACTION_SHOW_TOAST
                 putExtra(ProximityOverlayService.EXTRA_PAYLOAD, payloadJson)
-                setPackage(reactContext.packageName)
             }
-            reactContext.sendBroadcast(intent)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                reactContext.startForegroundService(intent)
+            } else {
+                reactContext.startService(intent)
+            }
         } catch (e: Exception) {
-            e.printStackTrace()
+            try {
+                val b = Intent(ProximityOverlayService.ACTION_SHOW_TOAST).apply {
+                    putExtra(ProximityOverlayService.EXTRA_PAYLOAD, payloadJson)
+                    setPackage(reactContext.packageName)
+                }
+                reactContext.sendBroadcast(b)
+            } catch (e2: Exception) { e2.printStackTrace() }
         }
     }
 }

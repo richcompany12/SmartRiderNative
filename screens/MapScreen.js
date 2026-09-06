@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { View, StyleSheet, TouchableOpacity, Text, Alert } from 'react-native';
 import { WebView } from 'react-native-webview';
 import * as Location from 'expo-location';
@@ -12,21 +13,31 @@ export default function MapScreen({ navigation }) {
   const [alertPoints, setAlertPoints] = useState([]);
   const [myLocation, setMyLocation] = useState(null);
 
+  const refreshMyLocation = async () => {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== 'granted') return;
+    const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.BestForNavigation });
+    const newLoc = { lat: loc.coords.latitude, lng: loc.coords.longitude };
+    setMyLocation(newLoc);
+    webViewRef.current?.postMessage(JSON.stringify({ type: 'UPDATE_MY_LOCATION', myLocation: newLoc }));
+  };
+
   useEffect(() => {
     (async () => {
-      // 위치 권한
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === 'granted') {
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-        setMyLocation({ lat: loc.coords.latitude, lng: loc.coords.longitude });
-      }
-      // 데이터 로드
+      await refreshMyLocation();
       const bList = await getAllBuildings();
       const aList = await getAllAlertPoints();
       setBuildings(bList);
       setAlertPoints(aList);
     })();
   }, []);
+
+  // 지도 탭에 다시 들어올 때마다 현재위치 새로 갱신
+  useFocusEffect(
+    useCallback(() => {
+      refreshMyLocation();
+    }, [])
+  );
 
   // 데이터 준비되면 WebView로 전송
   useEffect(() => {
@@ -44,8 +55,8 @@ export default function MapScreen({ navigation }) {
     webViewRef.current?.postMessage(msg);
   };
 
-  const moveToMyLocation = () => {
-    webViewRef.current?.postMessage(JSON.stringify({ type: 'MOVE_TO_MY_LOCATION' }));
+   const moveToMyLocation = async () => {
+    await refreshMyLocation();
   };
 
   // WebView → RN 메시지 처리
@@ -126,13 +137,17 @@ export default function MapScreen({ navigation }) {
       window.addEventListener('message', handleRNMessage);
     });
 
-    function handleRNMessage(e) {
+ function handleRNMessage(e) {
       try {
         var data = JSON.parse(e.data);
         if (data.type === 'INIT') {
           initMap(data);
         } else if (data.type === 'MOVE_TO_MY_LOCATION') {
           if (myMarker) map.setCenter(myMarker.getPosition());
+        } else if (data.type === 'UPDATE_MY_LOCATION') {
+          var newPos = new kakao.maps.LatLng(data.myLocation.lat, data.myLocation.lng);
+          if (myMarker) myMarker.setPosition(newPos);
+          map.setCenter(newPos);
         }
       } catch(err) {}
     }

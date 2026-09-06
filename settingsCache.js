@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const RADIUS_KEY = 'proximity_radius';
-const DEFAULT_RADIUS = 30; // 기본값 30m
+const DEFAULT_RADIUS = 20; // 기본값 20m
 
 let _radiusCache = null;
 
