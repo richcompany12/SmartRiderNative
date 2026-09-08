@@ -9,6 +9,8 @@ import MapScreen from './screens/MapScreen';
 import LoginScreen from './screens/LoginScreen';
 import ProximityNotifier from './screens/ProximityNotifier';
 import LocationPickerScreen from './screens/LocationPickerScreen';
+import SettingsScreen from './screens/SettingsScreen';
+import { navigationRef } from './navigationRef';
 
 const Stack = createNativeStackNavigator();
 
@@ -26,6 +28,7 @@ function AppNavigator() {
             <Stack.Screen name="Detail" component={DetailScreen} options={{ title: '상세 정보' }} />
             <Stack.Screen name="Map" component={MapScreen} options={{ title: '지도' }} />
             <Stack.Screen name="LocationPicker" component={LocationPickerScreen} options={{ title: '위치 선택' }} />
+            <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: '설정' }} />
           </>
         ) : (
           <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
@@ -39,7 +42,8 @@ function AppNavigator() {
 export default function App() {
   return (
     <AuthProvider>
-      <NavigationContainer>
+      {/* ref를 달아야 ProximityNotifier가 네비게이터 밖에서도 화면을 이동시킬 수 있다 */}
+      <NavigationContainer ref={navigationRef}>
         <AppNavigator />
       </NavigationContainer>
     </AuthProvider>

@@ -14,3 +14,8 @@ export const getCachedBuildings = async (forceRefresh = false) => {
   _cacheTime = now;
   return list;
 };
+
+export const invalidateBuildingsCache = () => {
+  _cache = null;
+  _cacheTime = 0;
+};

@@ -3,7 +3,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import { View, StyleSheet, TouchableOpacity, Text, Alert } from 'react-native';
 import { WebView } from 'react-native-webview';
 import * as Location from 'expo-location';
-import { getAllBuildings, getAllAlertPoints } from '../firebaseDB';
+import { getAllAlertPoints } from '../firebaseDB';
+import { getCachedBuildings } from '../buildingsCache';
 
 const KAKAO_API_KEY = '7d65ade73c1b3e7d64687306911f7ce7';
 
@@ -12,6 +13,9 @@ export default function MapScreen({ navigation }) {
   const [buildings, setBuildings] = useState([]);
   const [alertPoints, setAlertPoints] = useState([]);
   const [myLocation, setMyLocation] = useState(null);
+
+  // 팝업이 이미 떠 있으면 두 번째 요청을 무시하기 위한 잠금장치
+  const alertOpenRef = useRef(false);
 
   const refreshMyLocation = async () => {
     const { status } = await Location.requestForegroundPermissionsAsync();
@@ -22,20 +26,26 @@ export default function MapScreen({ navigation }) {
     webViewRef.current?.postMessage(JSON.stringify({ type: 'UPDATE_MY_LOCATION', myLocation: newLoc }));
   };
 
+  const loadData = async () => {
+    const bList = await getCachedBuildings();
+    const aList = await getAllAlertPoints();
+    setBuildings(bList);
+    setAlertPoints(aList);
+  };
+
   useEffect(() => {
     (async () => {
       await refreshMyLocation();
-      const bList = await getAllBuildings();
-      const aList = await getAllAlertPoints();
-      setBuildings(bList);
-      setAlertPoints(aList);
+      await loadData();
     })();
   }, []);
 
-  // 지도 탭에 다시 들어올 때마다 현재위치 새로 갱신
+  // 지도 탭에 다시 들어올 때마다 현재위치 + 목록 갱신
+  // (등록 화면에서 캐시를 무효화했으면 여기서 새 건물이 바로 반영된다)
   useFocusEffect(
     useCallback(() => {
       refreshMyLocation();
+      loadData();
     }, [])
   );
 
@@ -55,37 +65,74 @@ export default function MapScreen({ navigation }) {
     webViewRef.current?.postMessage(msg);
   };
 
-   const moveToMyLocation = async () => {
+  const moveToMyLocation = async () => {
     await refreshMyLocation();
+  };
+
+  // 팝업을 닫은 뒤 시간차를 두고 이동한다.
+  // 팝업이 떠 있는 상태에서 navigate를 부르면 에러 없이 조용히 무시되는 경우가 있다.
+  const goRegister = (params) => {
+    alertOpenRef.current = false;
+    setTimeout(() => navigation.navigate('Register', params), 250);
   };
 
   // WebView → RN 메시지 처리
   const handleMessage = (event) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
+
       if (data.type === 'JS_ERROR') { alert('지도 에러: ' + data.msg); return; }
+
       if (data.type === 'MARKER_CLICK') {
         navigation.navigate('Detail', { buildingId: data.id });
-      } else if (data.type === 'LONG_PRESS') {
-        // 지도 길게 눌러 등록
+        return;
+      }
+
+      if (data.type === 'LONG_PRESS') {
+        // 이미 팝업이 떠 있으면 무시 (창이 겹쳐 뜨는 것을 막는다)
+        if (alertOpenRef.current) return;
+        alertOpenRef.current = true;
+
         const { lat, lng, nearest } = data;
+
         if (nearest) {
           Alert.alert(
             '근처 건물 발견',
             `📍 근처에 "${nearest.name}" 이(가) 있습니다.\n\n복사해서 등록하시겠습니까?`,
             [
               {
-                text: '복사 등록', onPress: () => navigation.navigate('Register', {
-                  buildingData: { name: nearest.name, memo: nearest.memo || '', note: nearest.note || '', shortcut: nearest.shortcut || '', images: [] },
+                text: '복사 등록',
+                onPress: () => goRegister({
+                  buildingData: {
+                    name: nearest.name,
+                    memo: nearest.memo || '',
+                    memo2: nearest.memo2 || '',
+                    note: nearest.note || '',
+                    shortcut: nearest.shortcut || '',
+                    images: []
+                  },
                   location: { lat, lng }
                 })
               },
-              { text: '새로 등록', onPress: () => navigation.navigate('Register', { location: { lat, lng } }) },
-              { text: '취소', style: 'cancel' }
-            ]
+              {
+                text: '새로 등록',
+                onPress: () => goRegister({ location: { lat, lng } })
+              },
+              {
+                text: '취소',
+                style: 'cancel',
+                // 취소는 잠금만 풀고 아무 일도 하지 않는다
+                onPress: () => { alertOpenRef.current = false; }
+              }
+            ],
+            {
+              cancelable: true,
+              // 바깥을 눌러 닫았을 때도 잠금 해제
+              onDismiss: () => { alertOpenRef.current = false; }
+            }
           );
         } else {
-          navigation.navigate('Register', { location: { lat, lng } });
+          goRegister({ location: { lat, lng } });
         }
       }
     } catch (e) {}
@@ -97,7 +144,13 @@ export default function MapScreen({ navigation }) {
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    * {
+      margin: 0; padding: 0; box-sizing: border-box;
+      /* 길게 눌러도 글자가 선택되거나 복사 메뉴가 뜨지 않게 */
+      -webkit-user-select: none; user-select: none;
+      -webkit-touch-callout: none;
+      -webkit-tap-highlight-color: transparent;
+    }
     body { width: 100vw; height: 100vh; overflow: hidden; }
     #map { width: 100%; height: 100%; }
     .overlay {
@@ -106,15 +159,16 @@ export default function MapScreen({ navigation }) {
       font-family: sans-serif; max-width: 220px; position: relative;
       border-left: 4px solid #3b82f6;
     }
-    .overlay-name { font-weight: bold; font-size: 13px; color: #1e3a5f; margin-bottom: 4px; }
+    .overlay-name { font-weight: bold; font-size: 13px; color: #1e3a5f; margin-bottom: 4px; padding-right: 18px; }
     .overlay-memo { font-size: 12px; color: #374151; background: #f0f4ff; padding: 4px 6px; border-radius: 6px; font-family: monospace; word-break: break-all; }
+    .overlay-memo2 { margin-top: 4px; background: #fff7ed; color: #9a3412; }
     .overlay-hint { font-size: 10px; color: #9ca3af; margin-top: 6px; text-align: center; }
-    .overlay-close { position: absolute; top: 4px; right: 8px; cursor: pointer; font-size: 16px; color: #9ca3af; }
+    .overlay-close { position: absolute; top: 2px; right: 6px; cursor: pointer; font-size: 18px; line-height: 18px; color: #9ca3af; padding: 2px 4px; }
   </style>
 </head>
 <body>
   <div id="map"></div>
-   <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_API_KEY}&autoload=false"></script>
+  <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_API_KEY}&autoload=false"></script>
   <script>
     window.onerror = function(msg, src, line) {
       window.ReactNativeWebView.postMessage(JSON.stringify({ type:'JS_ERROR', msg: msg + ' @' + line }));
@@ -123,8 +177,12 @@ export default function MapScreen({ navigation }) {
     if (typeof kakao === 'undefined') {
       window.ReactNativeWebView.postMessage(JSON.stringify({ type:'JS_ERROR', msg: 'kakao SDK 로드 실패 (네트워크/도메인)' }));
     }
-    var map, myMarker, myCircle, currentOverlay;
-    var longPressTimer = null;
+
+    var map, myMarker, currentOverlay;
+
+    // ★ INIT이 여러 번 와도 리스너가 쌓이지 않도록 데이터는 전역에 보관한다
+    var mapBuildings = [];
+    var placedMarkers = [];   // 다시 그릴 때 지우기 위해 보관
 
     kakao.maps.load(function() {
       map = new kakao.maps.Map(document.getElementById('map'), {
@@ -132,12 +190,16 @@ export default function MapScreen({ navigation }) {
         level: 3
       });
 
-      // RN에서 메시지 수신
+      // ★ 롱프레스 리스너는 여기서 딱 한 번만 등록한다.
+      //    initMap 안에 두면 INIT이 올 때마다 리스너가 쌓여서
+      //    한 번 눌렀는데 팝업이 여러 장 뜬다. (이번 버그의 원인)
+      setupLongPress();
+
       document.addEventListener('message', handleRNMessage);
       window.addEventListener('message', handleRNMessage);
     });
 
- function handleRNMessage(e) {
+    function handleRNMessage(e) {
       try {
         var data = JSON.parse(e.data);
         if (data.type === 'INIT') {
@@ -162,9 +224,9 @@ export default function MapScreen({ navigation }) {
       return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
 
-    function findNearest(lat, lng, buildings) {
+    function findNearest(lat, lng) {
       var nearest = null, minDist = Infinity;
-      buildings.forEach(function(b) {
+      mapBuildings.forEach(function(b) {
         if (!b.location) return;
         var d = calcDistance(lat, lng, b.location.lat, b.location.lng);
         if (d < minDist) { minDist = d; nearest = b; }
@@ -172,7 +234,14 @@ export default function MapScreen({ navigation }) {
       return minDist < 500 ? nearest : null;
     }
 
+    function clearMarkers() {
+      placedMarkers.forEach(function(m) { m.setMap(null); });
+      placedMarkers = [];
+    }
+
     function initMap(data) {
+      mapBuildings = data.buildings || [];
+
       var myLat = data.myLocation.lat;
       var myLng = data.myLocation.lng;
       var myPos = new kakao.maps.LatLng(myLat, myLng);
@@ -188,8 +257,11 @@ export default function MapScreen({ navigation }) {
         )
       });
 
+      // ★ 기존 마커를 지우고 다시 그린다 (안 지우면 핀이 겹겹이 쌓인다)
+      clearMarkers();
+
       // 건물 마커
-      data.buildings.forEach(function(b) {
+      mapBuildings.forEach(function(b) {
         var marker = new kakao.maps.Marker({
           position: new kakao.maps.LatLng(b.location.lat, b.location.lng),
           map: map, title: b.name
@@ -197,10 +269,11 @@ export default function MapScreen({ navigation }) {
         kakao.maps.event.addListener(marker, 'click', function() {
           showOverlay(b, false);
         });
+        placedMarkers.push(marker);
       });
 
       // 알림 마커
-      data.alertPoints.forEach(function(a) {
+      (data.alertPoints || []).forEach(function(a) {
         var marker = new kakao.maps.Marker({
           position: new kakao.maps.LatLng(a.location.lat, a.location.lng),
           map: map,
@@ -213,39 +286,56 @@ export default function MapScreen({ navigation }) {
         kakao.maps.event.addListener(marker, 'click', function() {
           showOverlay(a, true);
         });
+        placedMarkers.push(marker);
       });
+    }
 
-      // 지도 길게 누르기 (터치)
+    function setupLongPress() {
+      var el = document.getElementById('map');
       var touchTimer = null, touchLatLng = null;
-      document.getElementById('map').addEventListener('touchstart', function(e) {
+
+      el.addEventListener('touchstart', function(e) {
         if (e.touches.length !== 1) return;
+        if (!map) return;
+        // ★ 메모창 위에서 시작한 터치는 지도의 롱프레스로 치지 않는다.
+        //   (메모창이 지도 안에 들어있는 DOM이라 그냥 두면 둘 다 발동한다)
+        if (e.target && e.target.closest && e.target.closest('.overlay')) return;
         var touch = e.touches[0];
-        var rect = document.getElementById('map').getBoundingClientRect();
+        var rect = el.getBoundingClientRect();
         var proj = map.getProjection();
         var point = new kakao.maps.Point(touch.clientX - rect.left, touch.clientY - rect.top);
         touchLatLng = proj.coordsFromContainerPoint(point);
+
+        clearTimeout(touchTimer);
         touchTimer = setTimeout(function() {
+          if (!touchLatLng) return;
           var lat = touchLatLng.getLat();
           var lng = touchLatLng.getLng();
-          var nearest = findNearest(lat, lng, data.buildings);
+          var nearest = findNearest(lat, lng);
           window.ReactNativeWebView.postMessage(JSON.stringify({
             type: 'LONG_PRESS', lat: lat, lng: lng,
-            nearest: nearest ? { id: nearest.id, name: nearest.name, memo: nearest.memo || '', note: nearest.note || '', shortcut: nearest.shortcut || '' } : null
+            nearest: nearest ? {
+              id: nearest.id, name: nearest.name,
+              memo: nearest.memo || '', memo2: nearest.memo2 || '',
+              note: nearest.note || '', shortcut: nearest.shortcut || ''
+            } : null
           }));
         }, 800);
       }, { passive: true });
 
-      document.getElementById('map').addEventListener('touchend', function() { clearTimeout(touchTimer); });
-      document.getElementById('map').addEventListener('touchmove', function() { clearTimeout(touchTimer); });
+      el.addEventListener('touchend', function() { clearTimeout(touchTimer); });
+      el.addEventListener('touchmove', function() { clearTimeout(touchTimer); });
+      el.addEventListener('touchcancel', function() { clearTimeout(touchTimer); });
     }
 
     function showOverlay(item, isAlert) {
       if (currentOverlay) { currentOverlay.setMap(null); currentOverlay = null; }
       var content = '<div class="overlay" id="ov_' + item.id + '">' +
+        '<div class="overlay-close" onclick="closeOverlay()">×</div>' +
         '<div class="overlay-name">' + item.name + '</div>' +
         (item.memo ? '<div class="overlay-memo">' + item.memo + '</div>' : '') +
-        '<div class="overlay-hint">✏️ 2초 길게 누르면 수정</div>' +
-        '<div class="overlay-close" onclick="closeOverlay()">×</div>' +
+        (item.memo2 ? '<div class="overlay-memo overlay-memo2">' + item.memo2 + '</div>' : '') +
+        '<div class="overlay-hint">👆 빠르게 두 번 탭 → 상세보기</div>' +
         '</div>';
       var overlay = new kakao.maps.CustomOverlay({
         position: new kakao.maps.LatLng(item.location.lat, item.location.lng),
@@ -256,15 +346,37 @@ export default function MapScreen({ navigation }) {
       setTimeout(function() {
         var el = document.getElementById('ov_' + item.id);
         if (!el) return;
-        var timer = null;
-        el.addEventListener('touchstart', function() {
-          timer = setTimeout(function() {
+
+        var lastTapAt = 0;
+
+        // 닫기(×) 버튼인지 확인
+        function isCloseBtn(t) {
+          return t && t.className && String(t.className).indexOf('overlay-close') > -1;
+        }
+
+        el.addEventListener('touchstart', function(e) {
+          // 지도로 터치가 새어나가지 않게 막는다 (지도 확대/이동 방지)
+          e.stopPropagation();
+          if (isCloseBtn(e.target)) return;
+          e.preventDefault();
+        }, { passive: false });
+
+        el.addEventListener('touchend', function(e) {
+          e.stopPropagation();
+
+          if (isCloseBtn(e.target)) { closeOverlay(); return; }
+
+          // ── 빠르게 두 번 탭하면 상세보기 ──
+          var now = Date.now();
+          if (now - lastTapAt < 400) {
+            lastTapAt = 0;
             overlay.setMap(null);
+            currentOverlay = null;
             window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'MARKER_CLICK', id: item.id }));
-          }, 2000);
-        }, { passive: true });
-        el.addEventListener('touchend', function() { clearTimeout(timer); });
-        el.addEventListener('touchmove', function() { clearTimeout(timer); });
+          } else {
+            lastTapAt = now;
+          }
+        }, { passive: false });
       }, 100);
     }
 

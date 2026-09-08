@@ -7,6 +7,7 @@ import { db } from './firebase';
 import { ref, get, set, update, remove, push, onValue, off } from 'firebase/database';
 
 const BUILDINGS_PATH = 'buildings';
+const ALERTS_PATH = 'alerts';
 
 // ── 건물 목록 전체 가져오기 ──
 export const getAllBuildings = async () => {
@@ -82,13 +83,52 @@ export const forceCloudSync = async () => {};
 export const deleteFromAllStorages = async (id) => deleteBuilding(id);
 export const recoverDataFromFirebase = async () => {};
 
-// ── 알림 지점 (alerts) — 일단 메모리에만 보관 ──
-let _alertPoints = [];
-export const saveAlertPoint = async (data) => {
-  _alertPoints = _alertPoints.filter(a => a.id !== data.id);
-  _alertPoints.push(data);
+// ─────────────────────────────────────────────────────────
+//  강력 알림 지점 (후방카메라 / 주차단속 등)
+//
+//  ⚠️ 예전에는 메모리 배열(_alertPoints)에만 담아서
+//     앱을 끄면 등록한 지점이 전부 사라졌다. Firebase에 저장하도록 바꿈.
+//
+//  구조: alerts/{id} = { name, alertType, location:{lat,lng}, memo, timestamp }
+//  alertType: 'rear'(후방카메라) | 'front'(전방카메라) | 'parking'(주차단속) | 'etc'
+// ─────────────────────────────────────────────────────────
+
+export const getAllAlertPoints = async () => {
+  const snapshot = await get(ref(db, ALERTS_PATH));
+  if (!snapshot.exists()) return [];
+  return Object.entries(snapshot.val())
+    .filter(([_, data]) => data !== null)
+    .map(([id, data]) => ({ id, ...data }));
 };
-export const getAllAlertPoints = async () => _alertPoints;
+
+export const getAlertPoint = async (id) => {
+  const snapshot = await get(ref(db, `${ALERTS_PATH}/${id}`));
+  if (!snapshot.exists()) return null;
+  return { id, ...snapshot.val() };
+};
+
+export const saveAlertPoint = async (point) => {
+  const { id, ...data } = point;
+  if (id) {
+    await set(ref(db, `${ALERTS_PATH}/${id}`), {
+      ...data,
+      timestamp: data.timestamp || Date.now()
+    });
+    return id;
+  }
+  const newRef = push(ref(db, ALERTS_PATH));
+  await set(newRef, { ...data, timestamp: Date.now() });
+  return newRef.key;
+};
+
+export const updateAlertPoint = async (point) => {
+  const { id, ...data } = point;
+  await update(ref(db, `${ALERTS_PATH}/${id}`), {
+    ...data,
+    timestamp: Date.now()
+  });
+};
+
 export const deleteAlertPoint = async (id) => {
-  _alertPoints = _alertPoints.filter(a => a.id !== id);
+  await remove(ref(db, `${ALERTS_PATH}/${id}`));
 };

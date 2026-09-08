@@ -2,14 +2,14 @@ import { useEffect, useRef } from 'react';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import { AppState, NativeModules, DeviceEventEmitter } from 'react-native';
+import { StackActions } from '@react-navigation/native';
 import { getCachedBuildings } from '../buildingsCache';
-import { getRadius } from '../settingsCache';
+import { getAllAlertPoints } from '../firebaseDB';
+import { getRadius, getSettings } from '../settingsCache';
+import { navigateTo, navigationRef } from '../navigationRef';
 
 const { ProximityOverlayModule } = NativeModules;
 
-// 컴포넌트가 여러 번 마운트돼도 한 번만 돌게 하는 전역 플래그
-let setupDone = false;
-let lastSyncAt = 0;
 // ─────────────────────────────────────────────────────────
 //  위치 감지와 근접 판정은 전부 Kotlin(ProximityOverlayService)이 한다.
 //  JS가 하는 일은 두 가지뿐:
@@ -19,6 +19,15 @@ let lastSyncAt = 0;
 //  expo-location의 백그라운드 태스크(TaskManager)는 쓰지 않는다.
 //  안드로이드가 JobScheduler 경로를 조여서 백그라운드에서 죽기 때문.
 //  (2026-09-05 검증: Kotlin 포그라운드 서비스는 1시간 무중단, JS는 즉사)
+//
+//  ⚠️ 이 컴포넌트는 App.js에서 Stack.Navigator '바깥'에 있다.
+//     그래서 navigation prop을 받지 못하므로 navigationRef를 쓴다.
+//
+//  ⚠️ Kotlin은 화면이동 요청을 1.2초 / 2.5초 / 4초에 3번 보낸다.
+//     (앱이 뜨는 타이밍을 못 맞추면 navigate가 조용히 무시되기 때문)
+//     예전에는 "1초 안에 온 건 무시"로 걸렀는데, 간격이 1초보다 커서
+//     3개가 전부 통과 → 지도가 3번 열렸다.
+//     지금은 요청마다 붙은 navId를 기억해서 같은 번호면 버린다.
 // ─────────────────────────────────────────────────────────
 
 Notifications.setNotificationHandler({
@@ -29,9 +38,14 @@ Notifications.setNotificationHandler({
   }),
 });
 
-export default function ProximityNotifier({ navigation }) {
-  const lastDetail = useRef({ id: '', at: 0 });
- 
+// 컴포넌트가 여러 번 마운트돼도 한 번만 돌게 하는 전역 플래그
+let setupDone = false;
+let lastSyncAt = 0;
+
+export default function ProximityNotifier() {
+  // 이미 처리한 요청번호. 같은 번호가 또 오면 무시한다.
+  const doneNav = useRef({ detail: '', map: '', home: '' });
+
   // 건물 목록 + 반경을 Kotlin 서비스에 전달
   const syncBuildings = async (reason) => {
     try {
@@ -50,24 +64,54 @@ export default function ProximityNotifier({ navigation }) {
           id: String(b.id),
           name: b.name || '',
           memo: b.memo || '',
+          memo2: b.memo2 || '',   // 백업 출입정보
           lat: b.location.lat,
           lng: b.location.lng,
         }));
 
       await ProximityOverlayModule.setBuildings(JSON.stringify({ radius, buildings: slim }));
-      lastSyncAt.current = Date.now();
+      lastSyncAt = Date.now();
       console.log(`[PROX] 건물 ${slim.length}개 Kotlin에 전달 (${reason}), 반경 ${radius}m`);
     } catch (e) {
       console.log('[PROX] 건물 전달 실패', e?.message || e);
     }
   };
 
+  // 강력 알림 지점을 Kotlin 서비스에 전달
+  // (판정도, "안 볼래" 기록도 전부 Kotlin이 한다. 앱이 꺼져 있어도 동작해야 하므로)
+  const syncAlerts = async (reason) => {
+    try {
+      if (!ProximityOverlayModule?.setAlertPoints) return;
+
+      const [points, settings] = await Promise.all([getAllAlertPoints(), getSettings()]);
+      const slim = (points || [])
+        .filter(a => a.location?.lat && a.location?.lng)
+        // 설정에서 꺼둔 종류는 아예 넘기지 않는다
+        .filter(a => settings.alertTypes[a.alertType || 'etc'] !== false)
+        .map(a => ({
+          id: String(a.id),
+          name: a.name || '',
+          type: a.alertType || 'etc',
+          lat: a.location.lat,
+          lng: a.location.lng,
+        }));
+
+      await ProximityOverlayModule.setAlertPoints(JSON.stringify({
+        enterRadius: settings.alertDistance,
+        exitRadius: settings.alertDistance * 2,
+        sound: settings.alertSound,
+        points: slim,
+      }));
+      console.log(`[PROX] 알림지점 ${slim.length}개 Kotlin에 전달 (${reason})`);
+    } catch (e) {
+      console.log('[PROX] 알림지점 전달 실패', e?.message || e);
+    }
+  };
+
   const setup = async () => {
-    // 알림 권한
     const { status: notifStatus } = await Notifications.requestPermissionsAsync();
     console.log('[PROX] 알림권한', notifStatus);
 
-    // 위치 권한 (전경 → 배경 순서)
     const { status: fgStatus } = await Location.requestForegroundPermissionsAsync();
     console.log('[PROX] 전경위치권한', fgStatus);
     if (fgStatus !== 'granted') return;
@@ -75,7 +119,6 @@ export default function ProximityNotifier({ navigation }) {
     const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
     console.log('[PROX] 배경위치권한', bgStatus);
 
-    // 오버레이 권한 확인 후 서비스 시작
     try {
       const has = await ProximityOverlayModule?.hasPermission();
       console.log('[PROX] 오버레이권한', has);
@@ -89,35 +132,89 @@ export default function ProximityNotifier({ navigation }) {
 
     // 서비스가 뜨는 데 잠깐 걸리므로 조금 기다렸다 건물 전달
     setTimeout(() => syncBuildings('최초'), 1500);
+    setTimeout(() => syncAlerts('최초'), 1800);
+  };
+
+  // 네비게이터가 아직 준비 안 됐을 수 있으므로 몇 번 재시도한다.
+  // 성공하면 그 navId를 기록해서 뒤이어 오는 같은 요청은 버린다.
+  const runNav = (kind, navId, label, doNavigate) => {
+    if (navId && doneNav.current[kind] === navId) {
+      console.log(`[PROX] 이미 처리한 요청이라 건너뜀 (${label})`);
+      return;
+    }
+
+    let tries = 0;
+    const go = () => {
+      tries++;
+      // 재시도 도중에 다른 경로로 이미 처리됐으면 중단
+      if (navId && doneNav.current[kind] === navId) return;
+
+      if (doNavigate()) {
+        if (navId) doneNav.current[kind] = navId;
+        console.log(`[PROX] ${label} 이동 성공`);
+        return;
+      }
+      if (tries < 8) setTimeout(go, 700);
+      else console.log(`[PROX] ${label} 이동 실패 — 네비게이터 준비 안 됨`);
+    };
+    go();
   };
 
   useEffect(() => {
-    setup();
+    if (!setupDone) {
+      setupDone = true;
+      setup();
+    }
 
-    // 오버레이 토스트 더블탭 → 해당 건물 상세페이지
-    const sub = DeviceEventEmitter.addListener('ProximityToastDetailRequested', (buildingId) => {
+    // 토스트/패널 더블탭 → 해당 건물 상세페이지
+    const sub = DeviceEventEmitter.addListener('ProximityToastDetailRequested', (payload) => {
+      // 예전 버전은 문자열만 보냈으므로 둘 다 받아준다
+      const buildingId = typeof payload === 'string' ? payload : payload?.buildingId;
+      const navId = typeof payload === 'string' ? '' : (payload?.navId || '');
+      console.log('[PROX] 상세 요청 받음', buildingId);
       if (!buildingId) return;
-      const now = Date.now();
- // 재시도가 막히지 않도록 짧게. 같은 건물이라도 1초 지나면 다시 이동 허용
-      if (lastDetail.current.id === buildingId && now - lastDetail.current.at < 1000) return;
-      lastDetail.current = { id: buildingId, at: now };
-      console.log('[PROX] 상세페이지 이동', buildingId);
-      navigation?.navigate('Detail', { buildingId });
+
+      runNav('detail', navId, '상세페이지', () => navigateTo('Detail', { buildingId }));
+    });
+
+    // 미니패널 "지도 열기" → 지도 화면
+    // MapScreen이 useFocusEffect로 알아서 현재 위치를 잡고 주변 핀을 그려준다
+    const mapSub = DeviceEventEmitter.addListener('ProximityOpenMap', (payload) => {
+      const navId = payload?.navId || '';
+      runNav('map', navId, '지도', () => navigateTo('Map'));
+    });
+
+    // 미니패널 "앱 열기" → 홈(첫 화면)으로
+    // 화면 이름을 몰라도 되도록 스택 맨 앞으로 되돌리는 방식을 쓴다
+    const homeSub = DeviceEventEmitter.addListener('ProximityOpenHome', (payload) => {
+      const navId = payload?.navId || '';
+      runNav('home', navId, '홈', () => {
+        if (!navigationRef.isReady()) return false;
+        try {
+          navigationRef.dispatch(StackActions.popToTop());
+        } catch (e) {
+          // 이미 홈이면 아무 일도 안 일어난다
+        }
+        return true;
+      });
     });
 
     // 앱으로 돌아올 때마다 건물 목록 갱신 (너무 잦으면 건너뜀)
     const appStateSub = AppState.addEventListener('change', (nextState) => {
       if (nextState !== 'active') return;
-      if (Date.now() - lastSyncAt.current < 30000) return;
+      if (Date.now() - lastSyncAt < 30000) return;
       syncBuildings('앱 복귀');
+      syncAlerts('앱 복귀');
     });
 
     return () => {
       sub.remove();
+      mapSub.remove();
+      homeSub.remove();
       appStateSub.remove();
     };
   }, []);
 
-  // 화면에 그릴 것 없음 — 토스트는 Kotlin 오버레이가 그린다
+  // 화면에 그릴 것 없음 — 토스트와 플로팅 버튼은 Kotlin 오버레이가 그린다
   return null;
 }

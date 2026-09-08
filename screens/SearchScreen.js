@@ -11,7 +11,7 @@ const SK_SHORTCUTS = ['SK뷰', 'SK1차', 'SK2차', 'SK3차'];
 function InfoDots({ building }) {
   return (
     <View style={styles.dots}>
-      {building.memo && <View style={[styles.dot, { backgroundColor: '#ef4444' }]} />}
+      {(building.memo || building.memo2) && <View style={[styles.dot, { backgroundColor: '#ef4444' }]} />}
       {building.note && <View style={[styles.dot, { backgroundColor: '#000' }]} />}
       {building.shortcut && <View style={[styles.dot, { backgroundColor: '#ec4899' }]} />}
       {building.images?.length > 0 && <View style={[styles.dot, { backgroundColor: '#92400e' }]} />}
@@ -72,6 +72,7 @@ const inputRef = useRef(null);
       buildingData: {
         name: building.name,
         memo: building.memo || '',
+        memo2: building.memo2 || '',   // ← 추가
         note: building.note || '',
         shortcut: building.shortcut || '',
         images: [],

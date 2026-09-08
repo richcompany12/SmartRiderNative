@@ -102,6 +102,12 @@ export default function HomeScreen({ navigation }) {
         >
           <Text style={styles.btnSecondaryText}>🗺 지도</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.btnIcon}
+          onPress={() => navigation.navigate('Settings')}
+        >
+          <Text style={styles.btnSecondaryText}>⚙️</Text>
+        </TouchableOpacity>
       </View>
 
       <Text style={styles.sectionTitle}>최근 등록된 건물</Text>
@@ -157,6 +163,7 @@ const styles = StyleSheet.create({
   btnPrimary: { flex: 1, backgroundColor: '#3b82f6', padding: 12, borderRadius: 8, alignItems: 'center' },
   btnPrimaryText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
   btnSecondary: { flex: 1, backgroundColor: '#e2e8f0', padding: 12, borderRadius: 8, alignItems: 'center' },
+  btnIcon: { backgroundColor: '#e2e8f0', paddingHorizontal: 14, paddingVertical: 12, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   btnSecondaryText: { color: '#1e3a5f', fontWeight: 'bold', fontSize: 14 },
   sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#334155', marginBottom: 8 },
   list: { flex: 1 },
