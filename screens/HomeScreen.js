@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import Sidebar from './Sidebar';
 import {
   View, Text, FlatList, TouchableOpacity,
   StyleSheet, ActivityIndicator, Alert
@@ -24,6 +25,7 @@ export default function HomeScreen({ navigation }) {
   const [buildings, setBuildings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
+  const [menuOpen, setMenuOpen] = useState(false);
   const insets = useSafeAreaInsets();
 
   const loadBuildings = async () => {
@@ -80,7 +82,14 @@ export default function HomeScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>스마트 라이더 🏢</Text>
+      <View style={styles.titleRow}>
+        <TouchableOpacity style={styles.hamburger} onPress={() => setMenuOpen(true)}>
+          <Text style={styles.hamburgerText}>☰</Text>
+        </TouchableOpacity>
+        <Text style={styles.title}>스마트 라이더 🏢</Text>
+        {/* 제목을 가운데 두기 위한 빈 자리 */}
+        <View style={styles.hamburger} />
+      </View>
 
       {/* 상단 버튼 */}
       <View style={styles.topButtons}>
@@ -88,25 +97,19 @@ export default function HomeScreen({ navigation }) {
           style={styles.btnPrimary}
           onPress={() => navigation.navigate('Register', {})}
         >
-          <Text style={styles.btnPrimaryText}>+ 건물 등록</Text>
+          <Text style={styles.btnPrimaryText} numberOfLines={1}>+ 등록</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.btnSecondary}
           onPress={() => navigation.navigate('Search')}
         >
-          <Text style={styles.btnSecondaryText}>🔍 건물 조회</Text>
+          <Text style={styles.btnSecondaryText} numberOfLines={1}>🔍 조회</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.btnSecondary}
           onPress={() => navigation.navigate('Map')}
         >
-          <Text style={styles.btnSecondaryText}>🗺 지도</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.btnIcon}
-          onPress={() => navigation.navigate('Settings')}
-        >
-          <Text style={styles.btnSecondaryText}>⚙️</Text>
+          <Text style={styles.btnSecondaryText} numberOfLines={1}>🗺 지도</Text>
         </TouchableOpacity>
       </View>
 
@@ -152,19 +155,28 @@ export default function HomeScreen({ navigation }) {
       <TouchableOpacity style={[styles.refreshBtn, { marginBottom: insets.bottom + 8 }]} onPress={loadBuildings}>
         <Text style={styles.refreshBtnText}>🔄 새로고침</Text>
       </TouchableOpacity>
+
+      <Sidebar
+        visible={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        navigation={navigation}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8fafc', padding: 16 },
-  title: { fontSize: 26, fontWeight: 'bold', textAlign: 'center', color: '#1e3a5f', marginBottom: 16 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  title: { flex: 1, fontSize: 24, fontWeight: 'bold', textAlign: 'center', color: '#1e3a5f' },
+  hamburger: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  hamburgerText: { fontSize: 24, color: '#1e3a5f' },
   topButtons: { flexDirection: 'row', gap: 8, marginBottom: 16 },
-  btnPrimary: { flex: 1, backgroundColor: '#3b82f6', padding: 12, borderRadius: 8, alignItems: 'center' },
-  btnPrimaryText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
-  btnSecondary: { flex: 1, backgroundColor: '#e2e8f0', padding: 12, borderRadius: 8, alignItems: 'center' },
-  btnIcon: { backgroundColor: '#e2e8f0', paddingHorizontal: 14, paddingVertical: 12, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  btnSecondaryText: { color: '#1e3a5f', fontWeight: 'bold', fontSize: 14 },
+  // 글자가 두 줄로 깨지지 않게 좌우 여백을 줄이고 글씨도 조금 작게
+  btnPrimary: { flex: 1, backgroundColor: '#3b82f6', paddingVertical: 13, paddingHorizontal: 4, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  btnPrimaryText: { color: '#fff', fontWeight: 'bold', fontSize: 15 },
+  btnSecondary: { flex: 1, backgroundColor: '#e2e8f0', paddingVertical: 13, paddingHorizontal: 4, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  btnSecondaryText: { color: '#1e3a5f', fontWeight: 'bold', fontSize: 15 },
   sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#334155', marginBottom: 8 },
   list: { flex: 1 },
   item: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 12, borderRadius: 8, marginBottom: 6, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
