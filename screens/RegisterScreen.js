@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
-  ScrollView, StyleSheet, Alert, ActivityIndicator
+  ScrollView, StyleSheet, Alert, ActivityIndicator,
+  KeyboardAvoidingView, Platform
 } from 'react-native';
 import { saveBuilding, saveAlertPoint } from '../firebaseDB';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { invalidateBuildingsCache } from '../buildingsCache';
-import { ADMIN_UIDS } from '../constants';
-import { auth } from '../firebase';
+import { useAuth } from '../AuthContext';
 import { syncAlertsToService } from '../alertSync';
 
 const SPECIAL_CHARS_NAME = ['동', '라인', '-', ',', '1,2라인', '3,4라인', '5,6라인', '7,8라인'];
@@ -25,7 +25,7 @@ const ALERT_TYPES = [
 export default function RegisterScreen({ navigation, route }) {
   const buildingData = route.params?.buildingData || null;
 
-  const isAdmin = auth.currentUser && ADMIN_UIDS.includes(auth.currentUser.uid);
+  const { isAdmin } = useAuth();
 
   const [regMode, setRegMode] = useState('building');
   const [alertType, setAlertType] = useState(buildingData?.alertType || 'rear');
@@ -143,7 +143,16 @@ export default function RegisterScreen({ navigation, route }) {
   );
 
   return (
-    <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+    <ScrollView
+      style={styles.container}
+      keyboardShouldPersistTaps="handled"
+      // 키보드가 올라와도 아래쪽 입력칸이 가려지지 않게 여백을 넉넉히 준다
+      contentContainerStyle={{ paddingBottom: 340 }}
+    >
 
       {/* 탭 */}
       <View style={styles.tabRow}>
@@ -310,6 +319,7 @@ export default function RegisterScreen({ navigation, route }) {
       </View>
 
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 

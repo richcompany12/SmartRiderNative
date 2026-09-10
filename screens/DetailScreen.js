@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   ScrollView, StyleSheet, Alert, ActivityIndicator, Share, Image,
-  Modal, Animated, PanResponder, Dimensions, StatusBar
+  Modal, Animated, PanResponder, Dimensions, StatusBar,
+  KeyboardAvoidingView, Platform
 } from 'react-native';
 import { getBuilding, updateBuilding, deleteBuilding } from '../firebaseDB';
 import { ADMIN_UIDS } from '../constants';
@@ -253,7 +254,11 @@ export default function DetailScreen({ navigation, route }) {
 
   return (
     <View style={{ flex: 1 }}>
-    <ScrollView style={styles.container}>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 340 }}>
       <Text style={styles.title}>건물 상세 정보</Text>
 
       {saveMsg ? (
@@ -399,6 +404,7 @@ export default function DetailScreen({ navigation, route }) {
       </TouchableOpacity>
 
     </ScrollView>
+    </KeyboardAvoidingView>
 
     {/* Modal은 ScrollView 밖에 둬야 터치(핀치)를 뺏기지 않는다 */}
     <ImageViewer

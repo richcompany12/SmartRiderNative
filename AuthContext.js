@@ -7,6 +7,7 @@ import {
   signOut
 } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getRole, ensureUserProfile, ROLE, isAdmin as checkAdmin, isSuper as checkSuper } from './roles';
 
 const AuthContext = createContext();
 
@@ -16,6 +17,7 @@ export function useAuth() {
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
+  const [role, setRole] = useState(ROLE.USER);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -23,8 +25,14 @@ export function AuthProvider({ children }) {
       setUser(firebaseUser);
       if (firebaseUser) {
         await AsyncStorage.setItem('uid', firebaseUser.uid);
+        // 프로필이 없으면 만들고, 역할을 읽어온다
+        await ensureUserProfile(firebaseUser);
+        const r = await getRole(firebaseUser.uid);
+        setRole(r);
+        console.log('[ROLE] 현재 역할:', r);
       } else {
         await AsyncStorage.removeItem('uid');
+        setRole(ROLE.USER);
       }
       setLoading(false);
     });
@@ -43,7 +51,16 @@ export function AuthProvider({ children }) {
     await signOut(auth);
   };
 
-  const value = { user, signInWithEmail, signUpWithEmail, logout };
+  const value = {
+    user,
+    role,
+    // 화면에서는 이 두 값만 보면 된다
+    isAdmin: checkAdmin(role),
+    isSuper: checkSuper(role),
+    signInWithEmail,
+    signUpWithEmail,
+    logout,
+  };
 
   return (
     <AuthContext.Provider value={value}>

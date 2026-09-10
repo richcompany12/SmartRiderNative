@@ -84,7 +84,12 @@ export default function MapScreen({ navigation }) {
       if (data.type === 'JS_ERROR') { alert('지도 에러: ' + data.msg); return; }
 
       if (data.type === 'MARKER_CLICK') {
-        navigation.navigate('Detail', { buildingId: data.id });
+        // 알림지점과 건물은 저장 위치가 달라서 화면도 따로 간다
+        if (data.kind === 'alert') {
+          navigation.navigate('AlertDetail', { alertId: data.id });
+        } else {
+          navigation.navigate('Detail', { buildingId: data.id });
+        }
         return;
       }
 
@@ -159,11 +164,14 @@ export default function MapScreen({ navigation }) {
       font-family: sans-serif; max-width: 220px; position: relative;
       border-left: 4px solid #3b82f6;
     }
-    .overlay-name { font-weight: bold; font-size: 13px; color: #1e3a5f; margin-bottom: 4px; padding-right: 18px; }
-    .overlay-memo { font-size: 12px; color: #374151; background: #f0f4ff; padding: 4px 6px; border-radius: 6px; font-family: monospace; word-break: break-all; }
+    .overlay-head { display: flex; align-items: flex-start; }
+    .overlay-name { flex: 1; font-weight: bold; font-size: 13px; color: #1e3a5f; word-break: break-all; }
+    .overlay-memo { margin-top: 5px; font-size: 12px; color: #374151; background: #f0f4ff; padding: 4px 6px; border-radius: 6px; font-family: monospace; word-break: break-all; }
     .overlay-memo2 { margin-top: 4px; background: #fff7ed; color: #9a3412; }
+    .overlay-alert { border-left-color: #dc2626; }
+    .overlay-type { font-size: 12px; font-weight: bold; color: #b91c1c; margin-bottom: 4px; }
     .overlay-hint { font-size: 10px; color: #9ca3af; margin-top: 6px; text-align: center; }
-    .overlay-close { position: absolute; top: 2px; right: 6px; cursor: pointer; font-size: 18px; line-height: 18px; color: #9ca3af; padding: 2px 4px; }
+    .overlay-close { flex: 0 0 auto; margin-left: 8px; cursor: pointer; font-size: 18px; line-height: 15px; color: #9ca3af; }
   </style>
 </head>
 <body>
@@ -330,9 +338,13 @@ export default function MapScreen({ navigation }) {
 
     function showOverlay(item, isAlert) {
       if (currentOverlay) { currentOverlay.setMap(null); currentOverlay = null; }
-      var content = '<div class="overlay" id="ov_' + item.id + '">' +
-        '<div class="overlay-close" onclick="closeOverlay()">×</div>' +
-        '<div class="overlay-name">' + item.name + '</div>' +
+      var typeNames = { rear: '후방카메라', front: '전방카메라', parking: '주차단속', etc: '알림구역' };
+      var content = '<div class="overlay' + (isAlert ? ' overlay-alert' : '') + '" id="ov_' + item.id + '">' +
+        (isAlert ? '<div class="overlay-type">🚨 ' + (typeNames[item.alertType] || '알림구역') + '</div>' : '') +
+        '<div class="overlay-head">' +
+          '<div class="overlay-name">' + item.name + '</div>' +
+          '<div class="overlay-close" onclick="closeOverlay()">×</div>' +
+        '</div>' +
         (item.memo ? '<div class="overlay-memo">' + item.memo + '</div>' : '') +
         (item.memo2 ? '<div class="overlay-memo overlay-memo2">' + item.memo2 + '</div>' : '') +
         '<div class="overlay-hint">👆 빠르게 두 번 탭 → 상세보기</div>' +
@@ -372,7 +384,9 @@ export default function MapScreen({ navigation }) {
             lastTapAt = 0;
             overlay.setMap(null);
             currentOverlay = null;
-            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'MARKER_CLICK', id: item.id }));
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'MARKER_CLICK', id: item.id, kind: isAlert ? 'alert' : 'building'
+            }));
           } else {
             lastTapAt = now;
           }

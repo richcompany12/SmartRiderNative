@@ -10,6 +10,7 @@ import LoginScreen from './screens/LoginScreen';
 import ProximityNotifier from './screens/ProximityNotifier';
 import LocationPickerScreen from './screens/LocationPickerScreen';
 import SettingsScreen from './screens/SettingsScreen';
+import AlertDetailScreen from './screens/AlertDetailScreen';
 import { navigationRef } from './navigationRef';
 
 const Stack = createNativeStackNavigator();
@@ -29,6 +30,7 @@ function AppNavigator() {
             <Stack.Screen name="Map" component={MapScreen} options={{ title: '지도' }} />
             <Stack.Screen name="LocationPicker" component={LocationPickerScreen} options={{ title: '위치 선택' }} />
             <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: '설정' }} />
+            <Stack.Screen name="AlertDetail" component={AlertDetailScreen} options={{ title: '강력 알림 지점' }} />
           </>
         ) : (
           <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
