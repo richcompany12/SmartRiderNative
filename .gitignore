@@ -43,3 +43,5 @@ google-services.json
 # 로컬 도구
 adb
 adb.exe
+*.json.backup 
+buildings-export*.json 

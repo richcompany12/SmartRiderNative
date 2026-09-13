@@ -1,9 +1,10 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View, Text, TextInput, FlatList,
   TouchableOpacity, StyleSheet
 } from 'react-native';
-import { getAllBuildings } from '../firebaseDB';
+import { getCachedBuildings } from '../buildingsCache';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const SK_SHORTCUTS = ['SK뷰', 'SK1차', 'SK2차', 'SK3차'];
@@ -41,9 +42,20 @@ const insets = useSafeAreaInsets();
 const inputRef = useRef(null);
  
   useEffect(() => {
-    getAllBuildings().then(list => setBuildings([...list].reverse()));
     setTimeout(() => inputRef.current?.focus(), 300);
   }, []);
+
+  // ★ 화면에 돌아올 때마다 다시 읽는다.
+  //   처음 한 번만 읽으면, 공용으로 올리거나 삭제한 뒤 돌아왔을 때
+  //   이미 없는 건물이 목록에 남아 "찾을 수 없습니다"가 뜬다.
+  useFocusEffect(
+    useCallback(() => {
+      getCachedBuildings().then(list => {
+        const sorted = [...list].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        setBuildings(sorted);
+      });
+    }, [])
+  );
 
   const results = searchTerm.length > 0
     ? buildings.filter(b => {
@@ -86,6 +98,12 @@ const inputRef = useRef(null);
       style={styles.item}
       onPress={() => navigation.navigate('Detail', { buildingId: item.id })}
     >
+      <View style={styles.itemLeft}>
+        <Text style={styles.scopeIcon}>
+          {item.scope === 'personal' ? '🔒' : '🌐'}
+        </Text>
+        {item.isFav ? <Text style={styles.starIcon}>★</Text> : null}
+      </View>
       <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
       <View style={styles.itemRight}>
         <InfoDots building={item} />
@@ -163,7 +181,7 @@ const inputRef = useRef(null);
 
       <FlatList
         data={displayList}
-        keyExtractor={item => item.id}
+        keyExtractor={item => String(item.id)}
         renderItem={renderItem}
         style={styles.list}
         keyboardShouldPersistTaps="handled"
@@ -194,6 +212,9 @@ const styles = StyleSheet.create({
   toggleText: { color: '#3b82f6', fontSize: 14 },
   list: { flex: 1 },
   item: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 12, borderRadius: 8, marginBottom: 6, elevation: 2 },
+  itemLeft: { flexDirection: 'row', alignItems: 'center', marginRight: 8 },
+  scopeIcon: { fontSize: 13 },
+  starIcon: { fontSize: 13, color: '#eab308', marginLeft: 2 },
   itemName: { flex: 1, fontSize: 16, color: '#1e293b' },
   itemRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   dots: { flexDirection: 'column', alignItems: 'center', gap: 3 },

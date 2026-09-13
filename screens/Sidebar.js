@@ -1,11 +1,14 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  Animated, Dimensions, Pressable, Alert, ScrollView
+  Animated, Dimensions, Pressable, Alert, ScrollView,
+  BackHandler, ActivityIndicator
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../AuthContext';
 import { roleLabel } from '../roles';
+import { shareBackup, pickBackupFile, restoreFromData } from '../backup';
+import { invalidateBuildingsCache } from '../buildingsCache';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const PANEL_W = Math.min(300, SCREEN_W * 0.8);
@@ -25,6 +28,7 @@ export default function Sidebar({ visible, onClose, navigation }) {
   const { user, role, isAdmin, isSuper, logout } = useAuth();
   const slide = useRef(new Animated.Value(-PANEL_W)).current;
   const fade = useRef(new Animated.Value(0)).current;
+  const [busy, setBusy] = useState('');
 
   useEffect(() => {
     Animated.parallel([
@@ -39,6 +43,17 @@ export default function Sidebar({ visible, onClose, navigation }) {
         useNativeDriver: true,
       }),
     ]).start();
+  }, [visible]);
+
+  // 메뉴가 열려 있을 때 뒤로가기를 누르면 앱이 꺼지던 문제.
+  // 메뉴만 닫고 끝낸다.
+  useEffect(() => {
+    if (!visible) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      onClose();
+      return true;   // true = 여기서 처리했으니 앱을 끄지 마라
+    });
+    return () => sub.remove();
   }, [visible]);
 
   if (!visible) return null;
@@ -69,6 +84,104 @@ export default function Sidebar({ visible, onClose, navigation }) {
     setTimeout(() => Alert.alert(name, '아직 준비 중인 기능입니다.'), 220);
   };
 
+  // ── 백업하기 ───────────────────────────────────────────
+  const handleBackup = () => {
+    Alert.alert(
+      '백업하기',
+      '내 폰에 저장된 건물·메모·즐겨찾기를 파일 하나로 만들어 내보냅니다.\n\n' +
+      '⚠️ 파일에는 출입 비밀번호가 그대로 들어있습니다.\n' +
+      '카카오톡 나에게 보내기, 이메일, 보안 폴더처럼 나만 볼 수 있는 곳에 보관하세요.',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '만들기',
+          onPress: async () => {
+            setBusy('백업 파일을 만드는 중...');
+            try {
+              const r = await shareBackup();
+              setBusy('');
+              setTimeout(() => Alert.alert(
+                '백업 완료',
+                `건물 ${r.counts.buildings}건\n` +
+                `메모 ${r.counts.notes}건\n` +
+                `즐겨찾기 ${r.counts.favorites}건`
+              ), 400);
+            } catch (e) {
+              setBusy('');
+              Alert.alert('실패', e?.message || '백업에 실패했습니다.');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // ── 복원하기 ───────────────────────────────────────────
+  // 파일을 먼저 읽어서 내용을 보여주고, 그다음에 방식을 고르게 한다.
+  const handleRestore = async () => {
+    setBusy('파일을 여는 중...');
+    let picked;
+    try {
+      picked = await pickBackupFile();
+    } catch (e) {
+      setBusy('');
+      Alert.alert('실패', e?.message || '파일을 읽지 못했습니다.');
+      return;
+    }
+    setBusy('');
+    if (!picked) return;   // 사용자가 취소함
+
+    const when = picked.exportedAt
+      ? new Date(picked.exportedAt).toLocaleString('ko-KR')
+      : '알 수 없음';
+
+    Alert.alert(
+      '복원하기',
+      `${picked.name}\n만든 날짜: ${when}\n\n` +
+      `건물 ${picked.counts.buildings}건\n` +
+      `메모 ${picked.counts.notes}건\n` +
+      `즐겨찾기 ${picked.counts.favorites}건\n\n` +
+      '어떻게 넣을까요?',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '합치기',
+          onPress: () => doRestore(picked.data, 'merge')
+        },
+        {
+          text: '덮어쓰기',
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              '덮어쓰기',
+              '지금 폰에 있는 내 데이터가 전부 지워지고 백업 파일 내용으로 바뀝니다.\n되돌릴 수 없습니다.',
+              [
+                { text: '취소', style: 'cancel' },
+                { text: '덮어쓰기', style: 'destructive', onPress: () => doRestore(picked.data, 'replace') }
+              ]
+            );
+          }
+        }
+      ]
+    );
+  };
+
+  const doRestore = async (data, mode) => {
+    setBusy('복원하는 중...');
+    try {
+      const r = await restoreFromData(data, mode);
+      invalidateBuildingsCache();
+      setBusy('');
+      Alert.alert(
+        '복원 완료',
+        `건물 ${r.buildings}건\n메모 ${r.notes}건\n즐겨찾기 ${r.favorites}건`
+      );
+    } catch (e) {
+      setBusy('');
+      Alert.alert('실패', e?.message || '복원에 실패했습니다.');
+    }
+  };
+
   return (
     <View style={StyleSheet.absoluteFill}>
       {/* 어두운 배경 — 누르면 닫힘 */}
@@ -89,6 +202,13 @@ export default function Sidebar({ visible, onClose, navigation }) {
           </TouchableOpacity>
         </View>
 
+        {busy ? (
+          <View style={styles.busyBox}>
+            <ActivityIndicator color="#93c5fd" />
+            <Text style={styles.busyText}>{busy}</Text>
+          </View>
+        ) : null}
+
         <ScrollView style={{ flex: 1 }}>
           <MenuItem label="홈" onPress={onClose} />
           <MenuItem label="건물 등록" onPress={() => go('Register')} />
@@ -100,6 +220,15 @@ export default function Sidebar({ visible, onClose, navigation }) {
 
           <MenuItem label="공지사항" onPress={() => notReady('공지사항')} />
           <MenuItem label="제보하기" onPress={() => notReady('제보하기')} />
+
+          <View style={styles.divider} />
+
+          <Text style={styles.sectionTitle}>내 데이터</Text>
+          <MenuItem label="💾 백업하기" onPress={handleBackup} />
+          <MenuItem label="📥 복원하기" onPress={handleRestore} />
+          <Text style={styles.hint}>
+            내 폰에만 있는 데이터입니다. 폰을 바꾸기 전에 꼭 백업하세요.
+          </Text>
 
           {isAdmin && (
             <>
@@ -144,6 +273,9 @@ const styles = StyleSheet.create({
   badge: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#ef4444', marginLeft: 8 },
   divider: { height: 1, backgroundColor: '#334155', marginVertical: 14 },
   sectionTitle: { color: '#94a3b8', fontSize: 13, fontWeight: 'bold', marginBottom: 6 },
+  hint: { color: '#64748b', fontSize: 12, lineHeight: 17, marginTop: 6 },
+  busyBox: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  busyText: { color: '#cbd5e1', fontSize: 13 },
   footer: { borderTopWidth: 1, borderTopColor: '#334155', paddingTop: 14 },
   email: { color: '#cbd5e1', fontSize: 13 },
   roleChip: {

@@ -1,15 +1,21 @@
 import { useEffect, useState } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView,
-  StyleSheet, Alert, NativeModules, DeviceEventEmitter, Linking, Platform
+  StyleSheet, Alert, NativeModules, DeviceEventEmitter, Linking, Platform,
+  ActivityIndicator
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   getSettings, setRadius, setFloating,
   setAlertDistance, setAlertSound, setAlertType,
 } from '../settingsCache';
-import { getCachedBuildings } from '../buildingsCache';
+import { getCachedBuildings, invalidateBuildingsCache } from '../buildingsCache';
 import { getAllAlertPoints } from '../firebaseDB';
+import { useAuth } from '../AuthContext';
+import { countPersonalData } from '../personalDB';
+import {
+  getMigrationState, importServerToPersonal, deleteOriginalsFromServer,
+} from '../migration';
 
 const { ProximityOverlayModule } = NativeModules;
 
@@ -72,11 +78,26 @@ function ToggleRow({ label, hint, value, onChange }) {
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
+  const { isAdmin } = useAuth();
   const [settings, setSettings] = useState(null);
   const [muteCount, setMuteCount] = useState(null);
 
+  // 내 데이터 건수
+  const [myCount, setMyCount] = useState({ buildings: 0, notes: 0 });
+
+  // 데이터 이전 상태
+  const [migState, setMigState] = useState(null);
+  const [migBusy, setMigBusy] = useState(false);
+  const [migMsg, setMigMsg] = useState('');
+
+  const reloadCounts = async () => {
+    setMyCount(await countPersonalData());
+    setMigState(await getMigrationState());
+  };
+
   useEffect(() => {
     getSettings().then(s => setSettings({ ...s }));
+    reloadCounts();
 
     // 안 보기로 한 지점 개수는 Kotlin이 들고 있으므로 물어본다
     const sub = DeviceEventEmitter.addListener('ProximityMuteCount', (p) => {
@@ -200,6 +221,94 @@ export default function SettingsScreen() {
     );
   };
 
+  // ── 데이터 이전 (어드민 전용) ──────────────────────────
+
+  const onImport = () => {
+    Alert.alert(
+      '서버 데이터 가져오기',
+      '서버의 공용 건물을 내 폰으로 복사합니다.\n서버 데이터는 그대로 남아 있습니다.',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '가져오기',
+          onPress: async () => {
+            setMigBusy(true);
+            setMigMsg('가져오는 중...');
+            try {
+              const r = await importServerToPersonal();
+              invalidateBuildingsCache();
+              await reloadCounts();
+              setMigMsg('');
+              Alert.alert(
+                '완료',
+                `새로 가져옴: ${r.added}건\n이미 있던 것: ${r.skipped}건\n서버 전체: ${r.total}건`
+              );
+            } catch (e) {
+              setMigMsg('');
+              Alert.alert('실패', e?.message || '가져오기에 실패했습니다.');
+            } finally {
+              setMigBusy(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // 되돌릴 수 없는 작업이라 두 번 물어본다.
+  const onDeleteOriginals = () => {
+    const n = Object.keys(migState?.idMap || {}).length;
+    if (n === 0) {
+      Alert.alert('안내', '가져온 기록이 없습니다. 먼저 "서버 데이터 가져오기"를 하세요.');
+      return;
+    }
+    Alert.alert(
+      '서버 원본 삭제',
+      `서버에서 ${n}건을 지웁니다.\n\n` +
+      '공용으로 다시 올린 건물은 새 번호라서 지워지지 않습니다.\n' +
+      '백업 파일을 먼저 만들어 두셨나요?',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '다음',
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              '정말 삭제합니다',
+              '이 작업은 되돌릴 수 없습니다.',
+              [
+                { text: '취소', style: 'cancel' },
+                {
+                  text: '삭제',
+                  style: 'destructive',
+                  onPress: async () => {
+                    setMigBusy(true);
+                    try {
+                      const r = await deleteOriginalsFromServer((cur, total) => {
+                        setMigMsg(`삭제 중 ${cur}/${total}`);
+                      });
+                      invalidateBuildingsCache();
+                      await reloadCounts();
+                      setMigMsg('');
+                      Alert.alert('완료', `삭제: ${r.done}건 / 실패: ${r.failed}건`);
+                    } catch (e) {
+                      setMigMsg('');
+                      Alert.alert('실패', e?.message || '삭제에 실패했습니다.');
+                    } finally {
+                      setMigBusy(false);
+                    }
+                  }
+                }
+              ]
+            );
+          }
+        }
+      ]
+    );
+  };
+
+  const migCount = Object.keys(migState?.idMap || {}).length;
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}>
 
@@ -253,6 +362,16 @@ export default function SettingsScreen() {
         ))}
       </View>
 
+      {/* 내 데이터 */}
+      <Text style={styles.section}>내 데이터</Text>
+      <View style={styles.card}>
+        <Text style={styles.muteCount}>{myCount.buildings}건</Text>
+        <Text style={styles.rowHint}>
+          내가 등록한 건물입니다. 이 폰 안에만 저장되며 서버로 전송되지 않습니다.
+          {myCount.notes > 0 ? `\n공용 건물에 붙여둔 내 메모: ${myCount.notes}건` : ''}
+        </Text>
+      </View>
+
       {/* 꺼둔 지점 */}
       <Text style={styles.section}>안 보기로 한 지점</Text>
       <View style={styles.card}>
@@ -271,6 +390,53 @@ export default function SettingsScreen() {
           <Text style={styles.dangerBtnText}>전체 해제</Text>
         </TouchableOpacity>
       </View>
+
+      {/* 데이터 이전 — 어드민만 */}
+      {isAdmin && (
+        <>
+          <Text style={styles.section}>데이터 이전 (관리자)</Text>
+          <View style={styles.card}>
+            <Text style={styles.rowHint}>
+              서버의 공용 건물을 내 폰으로 회수한 뒤, 검증된 것만 다시 공용으로 올리는 작업입니다.
+              순서대로 진행하세요.
+            </Text>
+
+            {migBusy ? (
+              <View style={styles.busyBox}>
+                <ActivityIndicator color="#3b82f6" />
+                <Text style={styles.busyText}>{migMsg || '처리 중...'}</Text>
+              </View>
+            ) : null}
+
+            <TouchableOpacity
+              style={[styles.stepBtn, migBusy && styles.stepBtnOff]}
+              onPress={onImport}
+              disabled={migBusy}
+            >
+              <Text style={styles.stepBtnText}>① 서버 데이터를 내 폰으로 가져오기</Text>
+            </TouchableOpacity>
+
+            {migCount > 0 && (
+              <Text style={styles.migInfo}>
+                가져온 원본: {migCount}건
+                {migState?.deletedAt ? ` · 서버에서 삭제 완료` : ''}
+              </Text>
+            )}
+
+            <TouchableOpacity
+              style={[styles.dangerBtn, (migBusy || migCount === 0) && styles.dangerBtnOff]}
+              onPress={onDeleteOriginals}
+              disabled={migBusy || migCount === 0}
+            >
+              <Text style={styles.dangerBtnText}>③ 서버의 옛날 데이터 삭제</Text>
+            </TouchableOpacity>
+
+            <Text style={styles.warnText}>
+              ③은 분류 작업이 완전히 끝난 뒤에만 누르세요. 되돌릴 수 없습니다.
+            </Text>
+          </View>
+        </>
+      )}
 
       {/* 기타 */}
       <Text style={styles.section}>기타</Text>
@@ -311,4 +477,16 @@ const styles = StyleSheet.create({
   dangerBtnText: { color: '#dc2626', fontWeight: 'bold', fontSize: 15 },
   plainBtn: { minHeight: 48, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f1f5f9', borderRadius: 8 },
   plainBtnText: { color: '#475569', fontWeight: 'bold', fontSize: 15 },
+
+  // 데이터 이전
+  stepBtn: {
+    marginTop: 14, minHeight: 48, justifyContent: 'center', alignItems: 'center',
+    backgroundColor: '#e0f2fe', borderRadius: 8,
+  },
+  stepBtnOff: { backgroundColor: '#f1f5f9' },
+  stepBtnText: { color: '#0369a1', fontWeight: 'bold', fontSize: 15 },
+  migInfo: { fontSize: 13, color: '#475569', marginTop: 10, fontWeight: 'bold' },
+  warnText: { fontSize: 12, color: '#b45309', marginTop: 10, lineHeight: 17 },
+  busyBox: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14 },
+  busyText: { fontSize: 14, color: '#475569' },
 });

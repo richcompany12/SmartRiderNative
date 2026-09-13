@@ -8,11 +8,27 @@ import { getCachedBuildings } from '../buildingsCache';
 
 const KAKAO_API_KEY = '7d65ade73c1b3e7d64687306911f7ce7';
 
+// 지도에 그릴 범위. 건물이 2000건을 넘으면 핀을 전부 그릴 때 지도가 버벅인다.
+// 라이더가 실제로 쓰는 건 주변뿐이므로 이 반경만 그린다.
+const MAP_RADIUS_KM = 20;
+
+// 두 좌표 사이 거리(km)
+const distanceKm = (lat1, lng1, lat2, lng2) => {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
 export default function MapScreen({ navigation }) {
   const webViewRef = useRef(null);
   const [buildings, setBuildings] = useState([]);
   const [alertPoints, setAlertPoints] = useState([]);
   const [myLocation, setMyLocation] = useState(null);
+  const [shown, setShown] = useState({ mine: 0, pub: 0, total: 0 });
 
   // 팝업이 이미 떠 있으면 두 번째 요청을 무시하기 위한 잠금장치
   const alertOpenRef = useRef(false);
@@ -56,10 +72,25 @@ export default function MapScreen({ navigation }) {
   }, [myLocation, buildings, alertPoints]);
 
   const sendToMap = () => {
+    const near = buildings.filter(b => {
+      if (!b.location) return false;
+      const lat = parseFloat(b.location.lat);
+      const lng = parseFloat(b.location.lng);
+      if (isNaN(lat) || isNaN(lng)) return false;
+      return distanceKm(myLocation.lat, myLocation.lng, lat, lng) <= MAP_RADIUS_KM;
+    });
+
+    // 배지에 쓸 숫자
+    setShown({
+      mine: near.filter(b => b.scope === 'personal').length,
+      pub: near.filter(b => b.scope !== 'personal').length,
+      total: buildings.length,
+    });
+
     const msg = JSON.stringify({
       type: 'INIT',
       myLocation,
-      buildings: buildings.filter(b => b.location),
+      buildings: near,
       alertPoints: alertPoints.filter(a => a.location),
     });
     webViewRef.current?.postMessage(msg);
@@ -161,12 +192,31 @@ export default function MapScreen({ navigation }) {
     .overlay {
       background: #fff; border-radius: 10px; padding: 10px 14px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-      font-family: sans-serif; max-width: 220px; position: relative;
+      font-family: sans-serif; position: relative;
       border-left: 4px solid #3b82f6;
+      /* ★ max-width 대신 고정 폭.
+         max-width는 내용이 길면 브라우저가 늘려버리는 경우가 있다. */
+      width: 240px; box-sizing: border-box; overflow: hidden;
     }
-    .overlay-head { display: flex; align-items: flex-start; }
-    .overlay-name { flex: 1; font-weight: bold; font-size: 13px; color: #1e3a5f; word-break: break-all; }
-    .overlay-memo { margin-top: 5px; font-size: 12px; color: #374151; background: #f0f4ff; padding: 4px 6px; border-radius: 6px; font-family: monospace; word-break: break-all; }
+    .overlay-head { display: flex; align-items: flex-start; width: 100%; }
+    /* ★ min-width:0 이 핵심.
+       flex 항목은 기본값이 min-width:auto 라서 내용보다 작아지기를 거부한다.
+       그래서 글자가 상자 밖으로 삐져나왔다. */
+    .overlay-name {
+      flex: 1 1 auto; min-width: 0;
+      font-weight: bold; font-size: 13px; color: #1e3a5f;
+      word-break: break-all; overflow-wrap: anywhere;
+    }
+    .overlay-memo {
+      margin-top: 5px; font-size: 12px; color: #374151; background: #f0f4ff;
+      padding: 4px 6px; border-radius: 6px; font-family: monospace;
+      word-break: break-all; overflow-wrap: anywhere;
+      max-width: 100%; box-sizing: border-box;
+    }
+    .overlay-mine { border-left-color: #0d9488; }
+    .overlay-scope { font-size: 10px; font-weight: bold; margin-bottom: 3px; }
+    .overlay-scope-mine { color: #0d9488; }
+    .overlay-scope-public { color: #b45309; }
     .overlay-memo2 { margin-top: 4px; background: #fff7ed; color: #9a3412; }
     .overlay-alert { border-left-color: #dc2626; }
     .overlay-type { font-size: 12px; font-weight: bold; color: #b91c1c; margin-bottom: 4px; }
@@ -191,6 +241,31 @@ export default function MapScreen({ navigation }) {
     // ★ INIT이 여러 번 와도 리스너가 쌓이지 않도록 데이터는 전역에 보관한다
     var mapBuildings = [];
     var placedMarkers = [];   // 다시 그릴 때 지우기 위해 보관
+
+    // ── 핀 색 구분 ──────────────────────────────────
+    //  청록 = 내 폰에만 있는 건물 / 파랑 = 공용 건물
+    //  이미지 파일 없이 SVG를 그려서 쓴다. 인터넷이 없어도 뜬다.
+    function makePin(color) {
+      var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="26" height="36" viewBox="0 0 26 36">'
+        + '<path d="M13 0C5.8 0 0 5.8 0 13c0 9.8 13 23 13 23s13-13.2 13-23C26 5.8 20.2 0 13 0z" fill="' + color + '"/>'
+        + '<circle cx="13" cy="13" r="5" fill="#ffffff"/>'
+        + '</svg>';
+      return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+    }
+
+    var PIN_MINE = null, PIN_PUBLIC = null;
+    function pinImage(isMine) {
+      if (!PIN_MINE) {
+        PIN_MINE = new kakao.maps.MarkerImage(makePin('#0d9488'), new kakao.maps.Size(26, 36));
+        PIN_PUBLIC = new kakao.maps.MarkerImage(makePin('#2563eb'), new kakao.maps.Size(26, 36));
+      }
+      return isMine ? PIN_MINE : PIN_PUBLIC;
+    }
+
+    function isMineItem(b) {
+      if (b.scope) return b.scope === 'personal';
+      return String(b.id || '').indexOf('local_') === 0;
+    }
 
     kakao.maps.load(function() {
       map = new kakao.maps.Map(document.getElementById('map'), {
@@ -272,7 +347,8 @@ export default function MapScreen({ navigation }) {
       mapBuildings.forEach(function(b) {
         var marker = new kakao.maps.Marker({
           position: new kakao.maps.LatLng(b.location.lat, b.location.lng),
-          map: map, title: b.name
+          map: map, title: b.name,
+          image: pinImage(isMineItem(b))
         });
         kakao.maps.event.addListener(marker, 'click', function() {
           showOverlay(b, false);
@@ -339,8 +415,16 @@ export default function MapScreen({ navigation }) {
     function showOverlay(item, isAlert) {
       if (currentOverlay) { currentOverlay.setMap(null); currentOverlay = null; }
       var typeNames = { rear: '후방카메라', front: '전방카메라', parking: '주차단속', etc: '알림구역' };
-      var content = '<div class="overlay' + (isAlert ? ' overlay-alert' : '') + '" id="ov_' + item.id + '">' +
+      var mine = !isAlert && isMineItem(item);
+      var scopeLine = '';
+      if (!isAlert) {
+        scopeLine = mine
+          ? '<div class="overlay-scope overlay-scope-mine">🔒 내 폰에만</div>'
+          : '<div class="overlay-scope overlay-scope-public">🌐 공용</div>';
+      }
+      var content = '<div class="overlay' + (isAlert ? ' overlay-alert' : '') + (mine ? ' overlay-mine' : '') + '" id="ov_' + item.id + '">' +
         (isAlert ? '<div class="overlay-type">🚨 ' + (typeNames[item.alertType] || '알림구역') + '</div>' : '') +
+        scopeLine +
         '<div class="overlay-head">' +
           '<div class="overlay-name">' + item.name + '</div>' +
           '<div class="overlay-close" onclick="closeOverlay()">×</div>' +
@@ -413,6 +497,17 @@ export default function MapScreen({ navigation }) {
         domStorageEnabled
         geolocationEnabled
       />
+      {/* 핀 색 안내 */}
+      <View style={styles.legend}>
+        <View style={styles.legendRow}>
+          <View style={[styles.dot, { backgroundColor: '#0d9488' }]} />
+          <Text style={styles.legendText}>내 폰 {shown.mine}</Text>
+          <View style={[styles.dot, { backgroundColor: '#2563eb', marginLeft: 10 }]} />
+          <Text style={styles.legendText}>공용 {shown.pub}</Text>
+        </View>
+        <Text style={styles.legendHint}>주변 {MAP_RADIUS_KM}km · 전체 {shown.total}건</Text>
+      </View>
+
       {/* 내 위치 버튼 */}
       <TouchableOpacity style={styles.myLocBtn} onPress={moveToMyLocation}>
         <Text style={styles.myLocBtnText}>📍</Text>
@@ -431,4 +526,14 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 6, elevation: 6
   },
   myLocBtnText: { fontSize: 24 },
+  legend: {
+    position: 'absolute', top: 12, left: 12,
+    backgroundColor: 'rgba(255,255,255,0.94)', borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 8,
+    shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 4, elevation: 4,
+  },
+  legendRow: { flexDirection: 'row', alignItems: 'center' },
+  dot: { width: 10, height: 10, borderRadius: 5, marginRight: 5 },
+  legendText: { fontSize: 12, color: '#334155', fontWeight: 'bold' },
+  legendHint: { fontSize: 10, color: '#94a3b8', marginTop: 3 },
 });

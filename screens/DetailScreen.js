@@ -6,9 +6,14 @@ import {
   KeyboardAvoidingView, Platform
 } from 'react-native';
 import { getBuilding, updateBuilding, deleteBuilding } from '../firebaseDB';
-import { ADMIN_UIDS } from '../constants';
-import { auth } from '../firebase';
-import { invalidateBuildingsCache } from '../buildingsCache'; 
+import { invalidateBuildingsCache } from '../buildingsCache';
+import { useAuth } from '../AuthContext';
+import {
+  isLocalId, getPersonalBuilding, savePersonalBuilding,
+  deletePersonalBuilding, getPersonalNote, savePersonalNote,
+  isFavorite, toggleFavorite, setFavorite,
+} from '../personalDB';
+import { promoteToPublic } from '../migration';
 
 const SCREEN = Dimensions.get('window');
 
@@ -184,26 +189,83 @@ export default function DetailScreen({ navigation, route }) {
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerIndex, setViewerIndex] = useState(0);
 
-  const isAdmin = auth.currentUser && ADMIN_UIDS.includes(auth.currentUser.uid);
+  const { isAdmin } = useAuth();
+
+  // 즐겨찾기 — 내 폰에만 저장된다
+  const [fav, setFav] = useState(false);
+  useEffect(() => { isFavorite(buildingId).then(setFav); }, [buildingId]);
+
+  const onToggleFav = async () => {
+    const next = await toggleFavorite(buildingId);
+    setFav(next);
+    invalidateBuildingsCache();
+  };
+
+  // local_ 로 시작하면 내 폰에 있는 건물이다.
+  const isMine = isLocalId(buildingId);
 
   useEffect(() => {
-    getBuilding(buildingId).then(data => {
-      if (!data) { navigation.goBack(); return; }
-      if (data.location) {
-        data.location = {
-          lat: parseFloat(String(data.location.lat)),
-          lng: parseFloat(String(data.location.lng))
-        };
+    const load = async () => {
+      try {
+        let data;
+
+        if (isMine) {
+          // ── 개인 건물: 폰에서 읽는다 ──
+          data = await getPersonalBuilding(buildingId);
+        } else {
+          // ── 공용 건물: 서버에서 읽고, 내 메모가 있으면 덧씌운다 ──
+          data = await getBuilding(buildingId);
+          if (data) {
+            const note = await getPersonalNote(buildingId);
+            if (note) {
+              data.publicMemo = data.memo || '';
+              data.publicMemo2 = data.memo2 || '';
+              data.memo = note.memo || data.memo || '';
+              data.memo2 = note.memo2 || data.memo2 || '';
+              data.hasPersonalNote = true;
+            }
+          }
+        }
+
+        if (!data) {
+          Alert.alert('건물 없음', '이 건물을 찾을 수 없습니다.');
+          navigation.goBack();
+          return;
+        }
+
+        if (data.location) {
+          data.location = {
+            lat: parseFloat(String(data.location.lat)),
+            lng: parseFloat(String(data.location.lng))
+          };
+        }
+        setBuilding(data);
+      } catch (e) {
+        console.log('[DETAIL] 불러오기 실패:', e?.message);
+        Alert.alert('오류', '건물 정보를 불러오지 못했습니다.');
+        navigation.goBack();
       }
-      setBuilding(data);
-    });
+    };
+    load();
   }, [buildingId]);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      await updateBuilding({ ...building, timestamp: Date.now() });
-      invalidateBuildingsCache(); 
+      if (isMine) {
+        // 내 건물 → 폰에 저장
+        await savePersonalBuilding({ ...building, timestamp: Date.now() });
+      } else if (isAdmin) {
+        // 어드민 → 공용 데이터를 실제로 수정
+        await updateBuilding({ ...building, timestamp: Date.now() });
+      } else {
+        // 일반 사용자가 공용 건물을 수정 → 출입 정보만 내 폰에 붙인다.
+        // 공용 데이터는 바뀌지 않는다.
+        await savePersonalNote(buildingId, {
+          memo: building.memo, memo2: building.memo2,
+        });
+      }
+      invalidateBuildingsCache();
       setEditMode(false);
       setLocationChanged(false);
       setSaveMsg('저장 완료!');
@@ -216,17 +278,64 @@ export default function DetailScreen({ navigation, route }) {
   };
 
   const handleDelete = () => {
-    Alert.alert('삭제 확인', '정말 삭제하시겠습니까?', [
-      { text: '취소', style: 'cancel' },
-      {
-        text: '삭제', style: 'destructive',
-        onPress: async () => {
-          await deleteBuilding(buildingId);
-          invalidateBuildingsCache();   // ← 추가
-          navigation.goBack();
+    Alert.alert(
+      '삭제 확인',
+      isMine ? '내 폰에서 삭제합니다.' : '공용 데이터에서 삭제합니다. 모든 사용자에게 영향이 갑니다.',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '삭제', style: 'destructive',
+          onPress: async () => {
+            try {
+              if (isMine) await deletePersonalBuilding(buildingId);
+              else await deleteBuilding(buildingId);
+              invalidateBuildingsCache();
+              navigation.goBack();
+            } catch (e) {
+              Alert.alert('오류', '삭제 실패: ' + e.message);
+            }
+          }
         }
-      }
-    ]);
+      ]
+    );
+  };
+
+  // 내 건물을 공용으로 올린다. 출입 정보는 빼고 올라간다.
+  const handlePromote = () => {
+    Alert.alert(
+      '공용으로 올리기',
+      `"${building.name}"을(를) 모든 사용자가 볼 수 있게 올립니다.\n\n` +
+      '출입 정보(비밀번호)는 올라가지 않고 내 폰에만 남습니다.',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '올리기',
+          onPress: async () => {
+            setSaving(true);
+            try {
+              const newId = await promoteToPublic({ ...building, id: buildingId });
+              // 즐겨찾기도 새 번호로 옮긴다
+              if (fav) {
+                await setFavorite(buildingId, false);
+                await setFavorite(newId, true);
+              }
+              invalidateBuildingsCache();
+              console.log('[PROMOTE] 새 공용 id:', newId);
+              Alert.alert(
+                '완료',
+                `공용 데이터로 올렸습니다.\n\n새 번호: ${newId}\n\n` +
+                'Firebase 콘솔에서는 목록 맨 아래에 있습니다.'
+              );
+              navigation.goBack();
+            } catch (e) {
+              Alert.alert('오류', '올리기 실패: ' + e.message);
+            } finally {
+              setSaving(false);
+            }
+          }
+        }
+      ]
+    );
   };
 
   const handleShare = () => {
@@ -261,6 +370,22 @@ export default function DetailScreen({ navigation, route }) {
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 340 }}>
       <Text style={styles.title}>건물 상세 정보</Text>
 
+      {/* 이 건물이 어느 쪽 데이터인지 + 즐겨찾기 */}
+      <View style={styles.topRow}>
+        <View style={[styles.scopeBadge, isMine ? styles.scopeMine : styles.scopePublic]}>
+          <Text style={styles.scopeBadgeText}>
+            {isMine ? '🔒 내 폰에만 저장됨' : '🌐 공용 데이터'}
+            {building.hasPersonalNote ? ' · 내 메모 있음' : ''}
+          </Text>
+        </View>
+        <TouchableOpacity
+          style={[styles.favStar, fav && styles.favStarOn]}
+          onPress={onToggleFav}
+        >
+          <Text style={styles.favStarText}>{fav ? '★' : '☆'}</Text>
+        </TouchableOpacity>
+      </View>
+
       {saveMsg ? (
         <View style={styles.saveMsg}>
           <Text style={styles.saveMsgText}>{saveMsg}</Text>
@@ -269,6 +394,22 @@ export default function DetailScreen({ navigation, route }) {
 
       {editMode ? (
         <>
+          {/* 공용 데이터를 직접 고치는 중이면 확실히 알려준다 */}
+          {!isMine && isAdmin && (
+            <View style={styles.editWarn}>
+              <Text style={styles.editWarnText}>
+                공용 데이터를 수정합니다. 출입 정보를 넣으면 모든 사용자에게 공개됩니다.
+              </Text>
+            </View>
+          )}
+          {!isMine && !isAdmin && (
+            <View style={styles.editNote}>
+              <Text style={styles.editNoteText}>
+                출입 정보만 내 폰에 저장됩니다. 다른 항목은 바뀌지 않습니다.
+              </Text>
+            </View>
+          )}
+
           <Text style={styles.label}>건물 이름</Text>
           <TextInput
             style={styles.input}
@@ -386,7 +527,22 @@ export default function DetailScreen({ navigation, route }) {
             <Text style={styles.btnShareText}>공유</Text>
           </TouchableOpacity>
 
-          {isAdmin && (
+          {/* 어드민이 아니어도 공용 건물에 내 메모는 붙일 수 있다 */}
+          {!isMine && !isAdmin && (
+            <TouchableOpacity style={styles.btnEdit} onPress={() => setEditMode(true)}>
+              <Text style={styles.btnEditText}>내 출입정보 입력</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* 내 건물을 공용으로 올리기 — 어드민만 */}
+          {isMine && isAdmin && (
+            <TouchableOpacity style={styles.btnPromote} onPress={handlePromote} disabled={saving}>
+              <Text style={styles.btnPromoteText}>🌐 공용으로 올리기</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* 내 건물이면 누구나, 공용 건물이면 어드민만 */}
+          {(isMine || isAdmin) && (
             <View style={styles.btnRow}>
               <TouchableOpacity style={styles.btnEdit} onPress={() => setEditMode(true)}>
                 <Text style={styles.btnEditText}>수정</Text>
@@ -480,4 +636,25 @@ const styles = StyleSheet.create({
   btnDeleteText: { color: '#dc2626', fontWeight: 'bold' },
   btnBack: { backgroundColor: '#f1f5f9', padding: 14, borderRadius: 8, alignItems: 'center', marginTop: 16, marginBottom: 40 },
   btnBackText: { color: '#475569', fontSize: 15 },
+
+  scopeBadge: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 14 },
+  scopeMine: { backgroundColor: '#ccfbf1' },
+  scopePublic: { backgroundColor: '#fef3c7' },
+  scopeBadgeText: { fontSize: 13, fontWeight: 'bold', color: '#334155' },
+
+  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 14 },
+  favStar: {
+    width: 44, height: 34, borderRadius: 10, justifyContent: 'center', alignItems: 'center',
+    backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#cbd5e1',
+  },
+  favStarOn: { backgroundColor: '#fef9c3', borderColor: '#facc15' },
+  favStarText: { fontSize: 19, color: '#a16207' },
+
+  btnPromote: { backgroundColor: '#fffbeb', borderWidth: 1, borderColor: '#fbbf24', padding: 14, borderRadius: 8, alignItems: 'center', marginTop: 16 },
+  btnPromoteText: { color: '#b45309', fontWeight: 'bold', fontSize: 15 },
+
+  editWarn: { backgroundColor: '#fef2f2', borderWidth: 1, borderColor: '#fca5a5', borderRadius: 8, padding: 12, marginBottom: 8 },
+  editWarnText: { color: '#b91c1c', fontSize: 13, lineHeight: 19 },
+  editNote: { backgroundColor: '#ecfdf5', borderWidth: 1, borderColor: '#6ee7b7', borderRadius: 8, padding: 12, marginBottom: 8 },
+  editNoteText: { color: '#065f46', fontSize: 13, lineHeight: 19 },
 });
