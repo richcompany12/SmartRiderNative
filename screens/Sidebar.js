@@ -219,7 +219,7 @@ export default function Sidebar({ visible, onClose, navigation }) {
           <View style={styles.divider} />
 
           <MenuItem label="공지사항" onPress={() => notReady('공지사항')} />
-          <MenuItem label="제보하기" onPress={() => notReady('제보하기')} />
+          <MenuItem label="제보하기" onPress={() => go('Suggest')} />
 
           <View style={styles.divider} />
 
@@ -234,7 +234,7 @@ export default function Sidebar({ visible, onClose, navigation }) {
             <>
               <View style={styles.divider} />
               <Text style={styles.sectionTitle}>관리자 메뉴</Text>
-              <MenuItem label="제보 확인" onPress={() => notReady('제보 확인')} />
+              <MenuItem label="제보 확인" onPress={() => go('SuggestAdmin')} />
               {isSuper && (
                 <MenuItem label="어드민 관리" onPress={() => notReady('어드민 관리')} />
               )}

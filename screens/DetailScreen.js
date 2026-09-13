@@ -14,6 +14,7 @@ import {
   isFavorite, toggleFavorite, setFavorite,
 } from '../personalDB';
 import { promoteToPublic } from '../migration';
+import { pickImages, takePhoto, uploadBuildingImages, deleteImageByUrl } from '../imageUpload';
 
 const SCREEN = Dimensions.get('window');
 
@@ -249,15 +250,65 @@ export default function DetailScreen({ navigation, route }) {
     load();
   }, [buildingId]);
 
+  // ── 사진 (공용 건물 + 어드민만) ────────────────────────
+  // 개인 건물에는 사진을 두지 않는다.
+  // 폰에만 두면 기기를 바꿀 때 사라지고, 서버에 두면 전국 라이더의
+  // 사진을 다 떠안게 된다. 공용으로 쓸 사진은 제보하기로 받는다.
+  //
+  // 업로드는 [저장]을 누를 때 한 번에 한다.
+  // 고르자마자 올려버리면, 취소하고 나갔을 때 서버에만 파일이 남아
+  // 아무도 찾지 못하는 쓰레기가 된다.
+  const canEditPhotos = !isMine && isAdmin;
+
+  const [pendingPhotos, setPendingPhotos] = useState([]);   // 올릴 사진 (로컬)
+  const [removedPhotos, setRemovedPhotos] = useState([]);   // 지울 사진 (주소)
+
+  // 화면에 보여줄 기존 사진 = 전체 - 지우기로 표시한 것
+  const shownImages = (building?.images || []).filter(u => !removedPhotos.includes(u));
+
+  const addPhotos = async (fromCamera) => {
+    try {
+      const picked = fromCamera
+        ? [await takePhoto()].filter(Boolean)
+        : await pickImages(5);
+      if (picked.length === 0) return;
+      setPendingPhotos(p => [...p, ...picked]);
+    } catch (e) {
+      Alert.alert('오류', e?.message || '사진을 가져오지 못했습니다.');
+    }
+  };
+
+  const markRemove = (url) => setRemovedPhotos(p => [...p, url]);
+  const undoRemove = (url) => setRemovedPhotos(p => p.filter(u => u !== url));
+  const dropPending = (idx) => setPendingPhotos(p => p.filter((_, i) => i !== idx));
+
+  const resetPhotoEdits = () => { setPendingPhotos([]); setRemovedPhotos([]); };
+
   const handleSave = async () => {
     setSaving(true);
     try {
+      // 사진 먼저 처리한다. 업로드가 실패하면 글자도 저장하지 않는다.
+      let nextImages = building.images;
+      if (canEditPhotos && (pendingPhotos.length > 0 || removedPhotos.length > 0)) {
+        let uploaded = [];
+        if (pendingPhotos.length > 0) {
+          setSaveMsg('사진 올리는 중...');
+          uploaded = await uploadBuildingImages(
+            buildingId, pendingPhotos,
+            (cur, total, pct) => setSaveMsg(`사진 ${cur}/${total} · ${pct}%`)
+          );
+        }
+        nextImages = [...shownImages, ...uploaded];
+      }
+
+      const payload = { ...building, images: nextImages, timestamp: Date.now() };
+
       if (isMine) {
         // 내 건물 → 폰에 저장
-        await savePersonalBuilding({ ...building, timestamp: Date.now() });
+        await savePersonalBuilding(payload);
       } else if (isAdmin) {
         // 어드민 → 공용 데이터를 실제로 수정
-        await updateBuilding({ ...building, timestamp: Date.now() });
+        await updateBuilding(payload);
       } else {
         // 일반 사용자가 공용 건물을 수정 → 출입 정보만 내 폰에 붙인다.
         // 공용 데이터는 바뀌지 않는다.
@@ -265,6 +316,14 @@ export default function DetailScreen({ navigation, route }) {
           memo: building.memo, memo2: building.memo2,
         });
       }
+      // DB 반영이 끝난 뒤에 Storage 파일을 지운다.
+      // 순서를 반대로 하면 저장이 실패했을 때 사진만 사라진다.
+      for (const url of removedPhotos) {
+        await deleteImageByUrl(url);
+      }
+
+      setBuilding(p => ({ ...p, images: nextImages }));
+      resetPhotoEdits();
       invalidateBuildingsCache();
       setEditMode(false);
       setLocationChanged(false);
@@ -278,26 +337,37 @@ export default function DetailScreen({ navigation, route }) {
   };
 
   const handleDelete = () => {
-    Alert.alert(
-      '삭제 확인',
-      isMine ? '내 폰에서 삭제합니다.' : '공용 데이터에서 삭제합니다. 모든 사용자에게 영향이 갑니다.',
-      [
-        { text: '취소', style: 'cancel' },
-        {
-          text: '삭제', style: 'destructive',
-          onPress: async () => {
-            try {
-              if (isMine) await deletePersonalBuilding(buildingId);
-              else await deleteBuilding(buildingId);
-              invalidateBuildingsCache();
-              navigation.goBack();
-            } catch (e) {
-              Alert.alert('오류', '삭제 실패: ' + e.message);
+    const photoCount = building?.images?.length || 0;
+    const msg = isMine
+      ? '내 폰에서 삭제합니다.'
+      : '공용 데이터에서 삭제합니다. 모든 사용자에게 영향이 갑니다.'
+        + (photoCount > 0 ? `\n사진 ${photoCount}장도 함께 삭제됩니다.` : '');
+
+    Alert.alert('삭제 확인', msg, [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제', style: 'destructive',
+        onPress: async () => {
+          try {
+            if (isMine) {
+              await deletePersonalBuilding(buildingId);
+            } else {
+              // 사진을 먼저 지운다.
+              // DB를 먼저 지우면 사진 주소를 잃어버려서
+              // Storage에 남은 파일을 영영 찾지 못한다.
+              for (const url of (building.images || [])) {
+                await deleteImageByUrl(url);
+              }
+              await deleteBuilding(buildingId);
             }
+            invalidateBuildingsCache();
+            navigation.goBack();
+          } catch (e) {
+            Alert.alert('오류', '삭제 실패: ' + e.message);
           }
         }
-      ]
-    );
+      }
+    ]);
   };
 
   // 내 건물을 공용으로 올린다. 출입 정보는 빼고 올라간다.
@@ -447,6 +517,59 @@ export default function DetailScreen({ navigation, route }) {
             multiline
           />
         
+          {/* 사진 — 공용 건물 + 어드민만 */}
+          {canEditPhotos && (
+            <View style={styles.photoBox}>
+              <Text style={styles.label}>
+                사진 · 배치도 ({shownImages.length + pendingPhotos.length})
+              </Text>
+
+              {/* 이미 올라가 있는 사진 */}
+              {(building.images || []).map((url, i) => {
+                const marked = removedPhotos.includes(url);
+                return (
+                  <View key={'old' + i} style={styles.photoRow}>
+                    <Image
+                      source={{ uri: url }}
+                      style={[styles.photoThumb, marked && styles.photoThumbOff]}
+                    />
+                    {marked ? (
+                      <TouchableOpacity style={styles.photoUndo} onPress={() => undoRemove(url)}>
+                        <Text style={styles.photoUndoText}>되돌리기</Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity style={styles.photoDel} onPress={() => markRemove(url)}>
+                        <Text style={styles.photoDelText}>✕ 삭제</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                );
+              })}
+
+              {/* 새로 고른 사진 — 아직 안 올라감 */}
+              {pendingPhotos.map((uri, i) => (
+                <View key={'new' + i} style={styles.photoRow}>
+                  <Image source={{ uri }} style={styles.photoThumb} />
+                  <View style={styles.photoNewTag}>
+                    <Text style={styles.photoNewTagText}>새 사진</Text>
+                  </View>
+                  <TouchableOpacity style={styles.photoDel} onPress={() => dropPending(i)}>
+                    <Text style={styles.photoDelText}>✕ 빼기</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+
+              <View style={styles.photoBtnRow}>
+                <TouchableOpacity style={styles.photoBtn} onPress={() => addPhotos(true)}>
+                  <Text style={styles.photoBtnText}>📷 찍기</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.photoBtn} onPress={() => addPhotos(false)}>
+                  <Text style={styles.photoBtnText}>🖼 앨범에서</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
           {/* 지도 위치 수정 */}
           <TouchableOpacity style={styles.btnLocation} onPress={openLocationPicker}>
             <Text style={styles.btnLocationText}>📍 지도 위치 수정</Text>
@@ -466,7 +589,7 @@ export default function DetailScreen({ navigation, route }) {
             <TouchableOpacity style={styles.btnSave} onPress={handleSave} disabled={saving}>
               {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnSaveText}>저장</Text>}
             </TouchableOpacity>
-            <TouchableOpacity style={styles.btnCancel} onPress={() => { setEditMode(false); setLocationChanged(false); }}>
+            <TouchableOpacity style={styles.btnCancel} onPress={() => { setEditMode(false); setLocationChanged(false); resetPhotoEdits(); }}>
               <Text style={styles.btnCancelText}>취소</Text>
             </TouchableOpacity>
           </View>
@@ -520,6 +643,16 @@ export default function DetailScreen({ navigation, route }) {
                   </View>
                 </TouchableOpacity>
               ))}
+            </View>
+          )}
+
+          {/* 개인 건물에는 사진을 두지 않는 이유를 알려준다 */}
+          {isMine && (
+            <View style={styles.photoNote}>
+              <Text style={styles.photoNoteText}>
+                사진은 공용 건물에만 등록됩니다.{'\n'}
+                다른 라이더에게도 도움이 될 정보라면 제보하기로 보내주세요.
+              </Text>
             </View>
           )}
 
@@ -641,6 +774,31 @@ const styles = StyleSheet.create({
   scopeMine: { backgroundColor: '#ccfbf1' },
   scopePublic: { backgroundColor: '#fef3c7' },
   scopeBadgeText: { fontSize: 13, fontWeight: 'bold', color: '#334155' },
+
+  photoBox: { marginTop: 16 },
+  photoRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
+  photoThumb: { width: 64, height: 64, borderRadius: 8, backgroundColor: '#e2e8f0' },
+  photoThumbOff: { opacity: 0.3 },
+  photoNewTag: { backgroundColor: '#dcfce7', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
+  photoNewTagText: { color: '#15803d', fontSize: 11, fontWeight: 'bold' },
+  photoDel: {
+    marginLeft: 'auto', backgroundColor: '#fee2e2',
+    paddingHorizontal: 12, minHeight: 40, justifyContent: 'center', borderRadius: 8,
+  },
+  photoDelText: { color: '#dc2626', fontSize: 13, fontWeight: 'bold' },
+  photoUndo: {
+    marginLeft: 'auto', backgroundColor: '#f1f5f9',
+    paddingHorizontal: 12, minHeight: 40, justifyContent: 'center', borderRadius: 8,
+  },
+  photoUndoText: { color: '#475569', fontSize: 13, fontWeight: 'bold' },
+  photoBtnRow: { flexDirection: 'row', gap: 10, marginTop: 6 },
+  photoBtn: {
+    flex: 1, minHeight: 48, justifyContent: 'center', alignItems: 'center',
+    backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#bfdbfe', borderRadius: 8,
+  },
+  photoBtnText: { color: '#2563eb', fontWeight: 'bold', fontSize: 15 },
+  photoNote: { marginTop: 16, backgroundColor: '#f1f5f9', borderRadius: 8, padding: 14 },
+  photoNoteText: { color: '#64748b', fontSize: 13, lineHeight: 20 },
 
   topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 14 },
   favStar: {

@@ -11,6 +11,8 @@ import ProximityNotifier from './screens/ProximityNotifier';
 import LocationPickerScreen from './screens/LocationPickerScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import AlertDetailScreen from './screens/AlertDetailScreen';
+import SuggestScreen from './screens/SuggestScreen';
+import SuggestAdminScreen from './screens/SuggestAdminScreen';
 import { navigationRef } from './navigationRef';
 
 const Stack = createNativeStackNavigator();
@@ -31,6 +33,8 @@ function AppNavigator() {
             <Stack.Screen name="LocationPicker" component={LocationPickerScreen} options={{ title: '위치 선택' }} />
             <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: '설정' }} />
             <Stack.Screen name="AlertDetail" component={AlertDetailScreen} options={{ title: '강력 알림 지점' }} />
+            <Stack.Screen name="Suggest" component={SuggestScreen} options={{ title: '제보하기' }} />
+            <Stack.Screen name="SuggestAdmin" component={SuggestAdminScreen} options={{ title: '제보 확인' }} />
           </>
         ) : (
           <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
