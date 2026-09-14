@@ -284,7 +284,7 @@ export default function DetailScreen({ navigation, route }) {
     setSaving(true);
     try {
       // 사진 먼저 처리한다. 업로드가 실패하면 글자도 저장하지 않는다.
-      let nextImages = building.images;
+      let nextImages = building.images || [];
       if (canEditPhotos && (pendingPhotos.length > 0 || removedPhotos.length > 0)) {
         let uploaded = [];
         if (pendingPhotos.length > 0) {
@@ -297,7 +297,18 @@ export default function DetailScreen({ navigation, route }) {
         nextImages = [...shownImages, ...uploaded];
       }
 
-      const payload = { ...building, images: nextImages, timestamp: Date.now() };
+      // Firebase는 undefined를 저장하지 못한다.
+      // 한 번도 입력한 적 없는 칸은 값이 아예 없으므로 빈 문자열로 채운다.
+      const payload = {
+        ...building,
+        name: building.name || '',
+        memo: building.memo || '',
+        memo2: building.memo2 || '',
+        note: building.note || '',
+        shortcut: building.shortcut || '',
+        images: nextImages,
+        timestamp: Date.now(),
+      };
 
       if (isMine) {
         await savePersonalBuilding(payload);
