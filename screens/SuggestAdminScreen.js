@@ -1,10 +1,12 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View, Text, TouchableOpacity, ScrollView, Image, FlatList,
   StyleSheet, Alert, ActivityIndicator, Linking, Platform
 } from 'react-native';
+import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '../theme';
 import {
   getAllSuggestions, setSuggestionDone, deleteSuggestion, typeLabel,
 } from '../suggestionsDB';
@@ -25,6 +27,8 @@ const timeAgo = (ms) => {
 
 export default function SuggestAdminScreen({ navigation }) {
   const insets = useSafeAreaInsets();
+  const { c, font, space, radius, TAP } = useTheme();
+  const s = useMemo(() => makeStyles(c, font, space, radius, TAP), [c]);
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('unread');   // 'unread' | 'all'
@@ -86,56 +90,67 @@ export default function SuggestAdminScreen({ navigation }) {
     const open = openId === item.id;
     return (
       <TouchableOpacity
-        style={[styles.card, !item.done && styles.cardUnread]}
+        style={[s.card, !item.done && s.cardUnread]}
         activeOpacity={0.9}
         onPress={() => setOpenId(open ? null : item.id)}
       >
-        <View style={styles.cardHead}>
-          {!item.done && <View style={styles.dot} />}
-          <Text style={styles.cardType}>{typeLabel(item.type)}</Text>
+        <View style={s.cardHead}>
+          {!item.done && <View style={s.dot} />}
+          <Text style={s.cardType}>{typeLabel(item.type)}</Text>
           {item.buildingName ? (
-            <Text style={styles.cardBuilding} numberOfLines={1}>· {item.buildingName}</Text>
+            <Text style={s.cardBuilding} numberOfLines={1}>· {item.buildingName}</Text>
           ) : null}
         </View>
 
-        <Text style={styles.cardText} numberOfLines={open ? undefined : 2}>
+        <Text style={s.cardText} numberOfLines={open ? undefined : 2}>
           {item.text}
         </Text>
 
-        <View style={styles.cardMeta}>
+        <View style={s.cardMeta}>
           {item.images?.length > 0 && (
-            <Text style={styles.metaTag}>📷 {item.images.length}</Text>
+            <View style={s.metaTag}>
+              <Icon name="image-outline" size={13} color={c.textSub} />
+              <Text style={s.metaTagText}>{item.images.length}</Text>
+            </View>
           )}
-          {item.location && <Text style={styles.metaTag}>📍</Text>}
-          <Text style={styles.metaEmail} numberOfLines={1}>{item.email}</Text>
-          <Text style={styles.metaTime}>{timeAgo(item.createdAt)}</Text>
+          {item.location && (
+            <Icon name="map-marker-outline" size={14} color={c.textSub} />
+          )}
+          <Text style={s.metaEmail} numberOfLines={1}>{item.email}</Text>
+          <Text style={s.metaTime}>{timeAgo(item.createdAt)}</Text>
         </View>
 
         {/* 펼쳤을 때 */}
         {open && (
-          <View style={styles.detail}>
+          <View style={s.detail}>
             {item.images?.map((url, i) => (
-              <Image key={i} source={{ uri: url }} style={styles.detailImage} resizeMode="contain" />
+              <Image key={i} source={{ uri: url }} style={s.detailImage} resizeMode="contain" />
             ))}
 
-            <View style={styles.actionRow}>
+            <View style={s.actionRow}>
               {item.location && (
-                <TouchableOpacity style={styles.actBtn} onPress={() => openInMap(item.location)}>
-                  <Text style={styles.actBtnText}>🗺 지도에서 보기</Text>
+                <TouchableOpacity style={s.actBtn} onPress={() => openInMap(item.location)}>
+                  <Icon name="map-outline" size={18} color={c.accent} />
+                  <Text style={s.actBtnText}>지도에서 보기</Text>
                 </TouchableOpacity>
               )}
               <TouchableOpacity
-                style={[styles.actBtn, item.done ? styles.actBtnUndo : styles.actBtnDone]}
+                style={[s.actBtn, item.done ? s.actBtnUndo : s.actBtnDone]}
                 onPress={() => toggleDone(item)}
               >
-                <Text style={[styles.actBtnText, !item.done && styles.actBtnTextOn]}>
-                  {item.done ? '↩ 안 읽음으로' : '✓ 처리 완료'}
+                <Icon
+                  name={item.done ? 'undo-variant' : 'check'}
+                  size={18}
+                  color={item.done ? c.textSub : '#fff'}
+                />
+                <Text style={[s.actBtnText, !item.done && s.actBtnTextOn]}>
+                  {item.done ? '안 읽음으로' : '처리 완료'}
                 </Text>
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity style={styles.delBtn} onPress={() => handleDelete(item)}>
-              <Text style={styles.delBtnText}>제보 삭제</Text>
+            <TouchableOpacity style={s.delBtn} onPress={() => handleDelete(item)}>
+              <Text style={s.delBtnText}>제보 삭제</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -144,30 +159,35 @@ export default function SuggestAdminScreen({ navigation }) {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>제보 확인</Text>
+    <View style={s.container}>
+      <View style={[s.header, { paddingTop: insets.top + space.sm }]}>
+        <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}>
+          <Icon name="arrow-left" size={24} color={c.textSub} />
+        </TouchableOpacity>
+        <Text style={s.screenTitle}>제보 확인</Text>
+      </View>
 
-      <View style={styles.tabRow}>
+      <View style={s.tabRow}>
         <TouchableOpacity
-          style={[styles.tab, tab === 'unread' && styles.tabOn]}
+          style={[s.tab, tab === 'unread' && s.tabOn]}
           onPress={() => setTab('unread')}
         >
-          <Text style={[styles.tabText, tab === 'unread' && styles.tabTextOn]}>
+          <Text style={[s.tabText, tab === 'unread' && s.tabTextOn]}>
             안 읽음 {unreadCount}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.tab, tab === 'all' && styles.tabOn]}
+          style={[s.tab, tab === 'all' && s.tabOn]}
           onPress={() => setTab('all')}
         >
-          <Text style={[styles.tabText, tab === 'all' && styles.tabTextOn]}>
+          <Text style={[s.tabText, tab === 'all' && s.tabTextOn]}>
             전체 {list.length}
           </Text>
         </TouchableOpacity>
       </View>
 
       {loading ? (
-        <ActivityIndicator size="large" color="#3b82f6" style={{ marginTop: 40 }} />
+        <ActivityIndicator size="large" color={c.accent} style={{ marginTop: 40 }} />
       ) : (
         <FlatList
           data={shown}
@@ -175,7 +195,7 @@ export default function SuggestAdminScreen({ navigation }) {
           renderItem={renderItem}
           contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}
           ListEmptyComponent={
-            <Text style={styles.empty}>
+            <Text style={s.empty}>
               {tab === 'unread' ? '안 읽은 제보가 없습니다.' : '제보가 없습니다.'}
             </Text>
           }
@@ -185,48 +205,60 @@ export default function SuggestAdminScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc', padding: 16 },
-  title: { fontSize: 24, fontWeight: 'bold', color: '#1e3a5f', marginBottom: 12 },
-  tabRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+const makeStyles = (c, font, space, radius, TAP) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.bg, paddingHorizontal: space.lg },
+  header: {
+    flexDirection: 'row', alignItems: 'center',
+    marginHorizontal: -space.sm, paddingBottom: space.sm,
+  },
+  backBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  screenTitle: { ...font.title, color: c.text, marginLeft: space.xs },
+
+  tabRow: { flexDirection: 'row', gap: space.sm, marginBottom: space.md },
   tab: {
     flex: 1, minHeight: 44, justifyContent: 'center', alignItems: 'center',
-    backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8,
+    backgroundColor: c.surface, borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: c.lineStrong,
   },
-  tabOn: { backgroundColor: '#1e3a5f', borderColor: '#1e3a5f' },
-  tabText: { fontSize: 14, color: '#475569', fontWeight: 'bold' },
-  tabTextOn: { color: '#fff' },
-  empty: { textAlign: 'center', color: '#94a3b8', marginTop: 40, fontSize: 14 },
+  tabOn: { backgroundColor: c.accent, borderColor: c.accent },
+  tabText: { ...font.sub, fontWeight: '500', color: c.textSub },
+  tabTextOn: { color: c.onAccent },
+  empty: { textAlign: 'center', color: c.textFaint, ...font.body, marginTop: 48 },
 
   card: {
-    backgroundColor: '#fff', borderRadius: 10, padding: 14, marginBottom: 8,
-    borderLeftWidth: 4, borderLeftColor: '#e2e8f0', elevation: 1,
+    backgroundColor: c.surface, borderRadius: radius.lg, padding: space.md + 2,
+    marginBottom: space.sm,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: c.line,
   },
-  cardUnread: { borderLeftColor: '#ef4444' },
+  cardUnread: { borderColor: c.danger },
   cardHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#ef4444' },
-  cardType: { fontSize: 13, fontWeight: 'bold', color: '#1e3a5f' },
-  cardBuilding: { flex: 1, fontSize: 13, color: '#64748b' },
-  cardText: { fontSize: 15, color: '#1e293b', lineHeight: 22 },
-  cardMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 },
-  metaTag: { fontSize: 12, color: '#475569' },
-  metaEmail: { flex: 1, fontSize: 12, color: '#94a3b8' },
-  metaTime: { fontSize: 12, color: '#94a3b8' },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: c.danger },
+  cardType: { ...font.sub, fontWeight: '500', color: c.accent },
+  cardBuilding: { flex: 1, ...font.sub, color: c.textMuted },
+  cardText: { ...font.body, color: c.text, lineHeight: 22 },
+  cardMeta: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.sm + 2 },
+  metaTag: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  metaTagText: { ...font.tiny, color: c.textSub },
+  metaEmail: { flex: 1, ...font.tiny, color: c.textFaint },
+  metaTime: { ...font.tiny, color: c.textFaint },
 
-  detail: { marginTop: 12, borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 12 },
+  detail: {
+    marginTop: space.md, borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: c.line, paddingTop: space.md,
+  },
   detailImage: {
-    width: '100%', height: 240, borderRadius: 8,
-    backgroundColor: '#f1f5f9', marginBottom: 8,
+    width: '100%', height: 240, borderRadius: radius.md,
+    backgroundColor: c.surfaceSoft, marginBottom: space.sm,
   },
-  actionRow: { flexDirection: 'row', gap: 8 },
+  actionRow: { flexDirection: 'row', gap: space.sm },
   actBtn: {
-    flex: 1, minHeight: 48, justifyContent: 'center', alignItems: 'center',
-    backgroundColor: '#f1f5f9', borderRadius: 8,
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    minHeight: TAP, backgroundColor: c.surfaceSoft, borderRadius: radius.md,
   },
-  actBtnDone: { backgroundColor: '#16a34a' },
-  actBtnUndo: { backgroundColor: '#f1f5f9' },
-  actBtnText: { fontSize: 14, fontWeight: 'bold', color: '#475569' },
+  actBtnDone: { backgroundColor: c.accent },
+  actBtnUndo: { backgroundColor: c.surfaceSoft },
+  actBtnText: { ...font.sub, fontWeight: '500', color: c.accent },
   actBtnTextOn: { color: '#fff' },
-  delBtn: { marginTop: 10, minHeight: 44, justifyContent: 'center', alignItems: 'center' },
-  delBtnText: { color: '#dc2626', fontSize: 13 },
+  delBtn: { marginTop: space.sm + 2, minHeight: 44, justifyContent: 'center', alignItems: 'center' },
+  delBtnText: { ...font.sub, color: c.danger },
 });

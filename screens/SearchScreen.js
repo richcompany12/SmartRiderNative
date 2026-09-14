@@ -1,32 +1,26 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useMemo } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
-  View, Text, TextInput, FlatList,
-  TouchableOpacity, StyleSheet
+  View, Text, TextInput, FlatList, TouchableOpacity,
+  ScrollView, StyleSheet
 } from 'react-native';
-import { getCachedBuildings } from '../buildingsCache';
+import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import BuildingRow from './BuildingRow';
+import { getCachedBuildings } from '../buildingsCache';
+import { copyBuildingMemo } from '../copyUtil';
+import { useTheme } from '../theme';
 
 const SK_SHORTCUTS = ['SK뷰', 'SK1차', 'SK2차', 'SK3차'];
+const PAGE = 20;
 
-function InfoDots({ building }) {
-  return (
-    <View style={styles.dots}>
-      {(building.memo || building.memo2) && <View style={[styles.dot, { backgroundColor: '#ef4444' }]} />}
-      {building.note && <View style={[styles.dot, { backgroundColor: '#000' }]} />}
-      {building.shortcut && <View style={[styles.dot, { backgroundColor: '#ec4899' }]} />}
-      {building.images?.length > 0 && <View style={[styles.dot, { backgroundColor: '#92400e' }]} />}
-      {building.location && <View style={[styles.dot, { backgroundColor: '#38bdf8' }]} />}
-    </View>
-  );
-}
-
+// 한글 초성 추출. "ㄷㅌㄴㄷ" 로 "동탄능동"을 찾기 위한 것.
 const getInitials = (str) => {
   const consonants = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
-  return str.split('').map(c => {
-    const code = c.charCodeAt(0) - 44032;
+  return str.split('').map(ch => {
+    const code = ch.charCodeAt(0) - 44032;
     if (code > -1 && code < 11172) return consonants[Math.floor(code / 588)];
-    return c;
+    return ch;
   }).join('');
 };
 
@@ -34,193 +28,190 @@ const clean = (str) => str.replace(/[\s{}[\]/?.,;:|)*~`!^\-_+<>@#$%&\\=('"]/g, '
 const nums = (str) => str.replace(/[^0-9]/g, '');
 
 export default function SearchScreen({ navigation }) {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [buildings, setBuildings] = useState([]);
-  const [showAll, setShowAll] = useState(false);
-const [isNumericMode, setIsNumericMode] = useState(true); // 기본 숫자패드
-const insets = useSafeAreaInsets();
-const inputRef = useRef(null);
- 
-  useEffect(() => {
-    setTimeout(() => inputRef.current?.focus(), 300);
-  }, []);
+  const insets = useSafeAreaInsets();
+  const { c, font, space, radius, TAP } = useTheme();
+  const s = useMemo(() => makeStyles(c, font, space, radius, TAP), [c]);
 
-  // ★ 화면에 돌아올 때마다 다시 읽는다.
-  //   처음 한 번만 읽으면, 공용으로 올리거나 삭제한 뒤 돌아왔을 때
-  //   이미 없는 건물이 목록에 남아 "찾을 수 없습니다"가 뜬다.
+  const [term, setTerm] = useState('');
+  const [buildings, setBuildings] = useState([]);
+  const [numericMode, setNumericMode] = useState(true);  // 기본 숫자패드
+  const [shown, setShown] = useState(PAGE);
+  const inputRef = useRef(null);
+
   useFocusEffect(
     useCallback(() => {
       getCachedBuildings().then(list => {
-        const sorted = [...list].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-        setBuildings(sorted);
+        setBuildings([...list].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)));
       });
+      const t = setTimeout(() => inputRef.current?.focus(), 300);
+      return () => clearTimeout(t);
     }, [])
   );
 
-  const results = searchTerm.length > 0
-    ? buildings.filter(b => {
-        if (!b?.name) return false;
-        const name = clean(b.name);
-        const term = clean(searchTerm);
-        if (name.includes(term)) return true;
-        if (getInitials(name).includes(getInitials(term))) return true;
-        if (nums(term).length > 0 && nums(name).includes(nums(term))) return true;
-        return false;
-      })
-    : [];
-
-  const displayList = searchTerm.length > 0
-    ? results
-    : showAll ? buildings : buildings.slice(0, 5);
-  
-  const toggleKeyboard = () => {
-  inputRef.current?.blur();
-  setIsNumericMode(prev => !prev);
-  setTimeout(() => inputRef.current?.focus(), 50);
-};
-
-  const handleCopy = (building) => {
-    navigation.navigate('Register', {
-      buildingData: {
-        name: building.name,
-        memo: building.memo || '',
-        memo2: building.memo2 || '',   // ← 추가
-        note: building.note || '',
-        shortcut: building.shortcut || '',
-        images: [],
-        location: null
-      }
+  // 이름·초성·숫자 세 가지로 찾는다.
+  // 장갑 낀 손으로는 오타가 나기 쉬워서 넓게 잡아준다.
+  const results = useMemo(() => {
+    if (term.length === 0) return buildings;
+    const t = clean(term);
+    const tInit = getInitials(t);
+    const tNum = nums(term);
+    return buildings.filter(b => {
+      if (!b?.name) return false;
+      const name = clean(b.name);
+      if (name.includes(t)) return true;
+      if (getInitials(name).includes(tInit)) return true;
+      if (tNum.length > 0 && nums(name).includes(tNum)) return true;
+      return false;
     });
+  }, [buildings, term]);
+
+  const onChangeTerm = (v) => { setTerm(v); setShown(PAGE); };
+
+  const toggleKeyboard = () => {
+    inputRef.current?.blur();
+    setNumericMode(p => !p);
+    setTimeout(() => inputRef.current?.focus(), 50);
   };
 
   const renderItem = ({ item }) => (
-    <TouchableOpacity
-      style={styles.item}
+    <BuildingRow
+      item={item}
       onPress={() => navigation.navigate('Detail', { buildingId: item.id })}
-    >
-      <View style={styles.itemLeft}>
-        <Text style={styles.scopeIcon}>
-          {item.scope === 'personal' ? '🔒' : '🌐'}
-        </Text>
-        {item.isFav ? <Text style={styles.starIcon}>★</Text> : null}
-      </View>
-      <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
-      <View style={styles.itemRight}>
-        <InfoDots building={item} />
-        <TouchableOpacity style={styles.copyBtn} onPress={() => handleCopy(item)}>
-          <Text style={styles.copyBtnText}>복사</Text>
-        </TouchableOpacity>
-      </View>
-    </TouchableOpacity>
+      onCopy={() => copyBuildingMemo(item)}
+    />
   );
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>건물 조회</Text>
-
-      {/* 검색창 */}
-      <TextInput
-  ref={inputRef}
-  style={styles.input}
-  value={searchTerm}
-  onChangeText={setSearchTerm}
-  placeholder="건물 이름 검색 (초성, 텍스트, 숫자)"
-  placeholderTextColor="#94a3b8"
-  inputMode={isNumericMode ? 'numeric' : 'text'}
-/>
-
-      {/* SK 단축키 */}
-      <View style={styles.shortcuts}>
-        {SK_SHORTCUTS.map(sk => (
-          <TouchableOpacity
-            key={sk}
-            style={styles.shortcutBtn}
-            onPress={() => setSearchTerm(sk)}
-          >
-            <Text style={styles.shortcutText}>{sk}</Text>
-          </TouchableOpacity>
-        ))}
-        {searchTerm.length > 0 && (
-          <TouchableOpacity
-            style={styles.clearBtn}
-            onPress={() => setSearchTerm('')}
-          >
-            <Text style={styles.clearText}>✕ 초기화</Text>
-          </TouchableOpacity>
-        )}
+    <View style={s.screen}>
+      {/* 헤더 */}
+      <View style={[s.header, { paddingTop: insets.top + space.sm }]}>
+        <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}>
+          <Icon name="arrow-left" size={24} color={c.textSub} />
+        </TouchableOpacity>
+        <Text style={s.title}>건물 조회</Text>
       </View>
 
-      {/* 헤더 */}
-      <View style={styles.listHeader}>
-  <Text style={styles.listTitle}>
-    {searchTerm.length > 0
-      ? `검색 결과 ${results.length}개`
-      : showAll ? '모든 건물' : '최근 등록된 건물'}
-  </Text>
-  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-    <TouchableOpacity
-      onPress={toggleKeyboard}
-      style={{
-        backgroundColor: isNumericMode ? '#1e40af' : '#f3f4f6',
-        paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12
-      }}
-    >
-      <Text style={{ color: isNumericMode ? '#fff' : '#374151', fontWeight: 'bold', fontSize: 12 }}>
-        {isNumericMode ? '123' : '가나다'}
+      {/* 검색창 */}
+      <View style={s.searchWrap}>
+        <Icon name="magnify" size={20} color={c.textMuted} />
+        <TextInput
+          ref={inputRef}
+          style={s.input}
+          value={term}
+          onChangeText={onChangeTerm}
+          placeholder="이름, 초성, 숫자로 검색"
+          placeholderTextColor={c.textFaint}
+          inputMode={numericMode ? 'numeric' : 'text'}
+        />
+        {term.length > 0 && (
+          <TouchableOpacity onPress={() => onChangeTerm('')} style={s.clearBtn}>
+            <Icon name="close-circle" size={19} color={c.textFaint} />
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity
+          onPress={toggleKeyboard}
+          style={[s.kbBtn, numericMode && s.kbBtnOn]}
+        >
+          <Text style={[s.kbText, numericMode && s.kbTextOn]}>
+            {numericMode ? '123' : '가나다'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* 단축 검색어 */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={s.chipScroll}
+        contentContainerStyle={s.chipRow}
+      >
+        {SK_SHORTCUTS.map(sk => (
+          <TouchableOpacity key={sk} style={s.chip} onPress={() => onChangeTerm(sk)}>
+            <Text style={s.chipText}>{sk}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      <Text style={s.count}>
+        {term.length > 0 ? `검색 결과 ${results.length}개` : `전체 ${results.length}개`}
       </Text>
-    </TouchableOpacity>
-    {searchTerm.length === 0 && (
-      <TouchableOpacity onPress={() => setShowAll(p => !p)}>
-        <Text style={styles.toggleText}>
-          {showAll ? '최근만 보기' : '모두 보기'}
-        </Text>
-      </TouchableOpacity>
-    )}
-  </View>
-</View>
 
       <FlatList
-        data={displayList}
+        data={results.slice(0, shown)}
         keyExtractor={item => String(item.id)}
         renderItem={renderItem}
-        style={styles.list}
         keyboardShouldPersistTaps="handled"
+        onEndReached={() => { if (shown < results.length) setShown(n => n + PAGE); }}
+        onEndReachedThreshold={0.4}
+        contentContainerStyle={{ paddingHorizontal: space.lg }}
+        ListEmptyComponent={
+          <Text style={s.empty}>
+            {term.length > 0 ? '찾는 건물이 없습니다.' : '등록된 건물이 없습니다.'}
+          </Text>
+        }
+        ListFooterComponent={<View style={{ height: 96 }} />}
       />
 
-      {/* 등록 버튼 */}
       <TouchableOpacity
-  style={[styles.registerBtn, { marginBottom: insets.bottom + 8 }]}
-  onPress={() => navigation.navigate('Register', {})}
->
-        <Text style={styles.registerBtnText}>+ 건물 등록</Text>
+        style={[s.fab, { bottom: insets.bottom + space.xl }]}
+        onPress={() => navigation.navigate('Register', {})}
+      >
+        <Icon name="plus" size={26} color={c.fabIcon} />
       </TouchableOpacity>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc', padding: 16 },
-  title: { fontSize: 24, fontWeight: 'bold', color: '#1e3a5f', marginBottom: 12 },
-  input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, padding: 12, fontSize: 16, marginBottom: 8, color: '#1e293b' },
-  shortcuts: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
-  shortcutBtn: { backgroundColor: '#fff7ed', borderWidth: 1, borderColor: '#fdba74', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
-  shortcutText: { color: '#c2410c', fontSize: 13 },
-  clearBtn: { backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#cbd5e1', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
-  clearText: { color: '#64748b', fontSize: 13 },
-  listHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  listTitle: { fontSize: 16, fontWeight: 'bold', color: '#334155' },
-  toggleText: { color: '#3b82f6', fontSize: 14 },
-  list: { flex: 1 },
-  item: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 12, borderRadius: 8, marginBottom: 6, elevation: 2 },
-  itemLeft: { flexDirection: 'row', alignItems: 'center', marginRight: 8 },
-  scopeIcon: { fontSize: 13 },
-  starIcon: { fontSize: 13, color: '#eab308', marginLeft: 2 },
-  itemName: { flex: 1, fontSize: 16, color: '#1e293b' },
-  itemRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  dots: { flexDirection: 'column', alignItems: 'center', gap: 3 },
-  dot: { width: 8, height: 8, borderRadius: 4 },
-  copyBtn: { backgroundColor: '#e2e8f0', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  copyBtnText: { fontSize: 12, color: '#475569' },
-  registerBtn: { backgroundColor: '#3b82f6', padding: 14, borderRadius: 8, alignItems: 'center', marginTop: 8 },
-  registerBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+const makeStyles = (c, font, space, radius, TAP) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: c.bg },
+
+  header: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: space.sm, paddingBottom: space.md,
+  },
+  backBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  title: { ...font.title, color: c.text, marginLeft: space.xs },
+
+  searchWrap: {
+    flexDirection: 'row', alignItems: 'center', gap: space.sm,
+    marginHorizontal: space.lg, paddingHorizontal: space.md,
+    minHeight: TAP + 4, borderRadius: radius.md,
+    backgroundColor: c.surface,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: c.lineStrong,
+  },
+  input: { flex: 1, ...font.body, color: c.text, paddingVertical: space.sm },
+  clearBtn: { padding: 2 },
+  kbBtn: {
+    paddingHorizontal: space.sm + 2, paddingVertical: 5, borderRadius: radius.pill,
+    backgroundColor: c.surfaceSoft,
+  },
+  kbBtnOn: { backgroundColor: c.accent },
+  kbText: { ...font.tiny, fontWeight: '500', color: c.textSub },
+  kbTextOn: { color: c.onAccent },
+
+  chipScroll: { flexGrow: 0, marginTop: space.md },
+  chipRow: { gap: space.sm, paddingHorizontal: space.lg },
+  chip: {
+    minHeight: 34, justifyContent: 'center', paddingHorizontal: space.md,
+    borderRadius: radius.pill, backgroundColor: c.surface,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: c.lineStrong,
+  },
+  chipText: { ...font.tiny, fontWeight: '500', color: c.textSub },
+
+  count: {
+    ...font.sub, color: c.textMuted,
+    paddingHorizontal: space.lg, marginTop: space.md, marginBottom: space.xs,
+  },
+
+  empty: {
+    textAlign: 'center', color: c.textFaint,
+    ...font.body, marginTop: 48,
+  },
+
+  fab: {
+    position: 'absolute', right: space.xl,
+    width: 54, height: 54, borderRadius: 27,
+    backgroundColor: c.fab, alignItems: 'center', justifyContent: 'center',
+    elevation: 4,
+  },
 });

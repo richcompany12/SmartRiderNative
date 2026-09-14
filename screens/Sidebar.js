@@ -1,10 +1,12 @@
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
   Animated, Dimensions, Pressable, Alert, ScrollView,
   BackHandler, ActivityIndicator
 } from 'react-native';
+import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '../theme';
 import { useAuth } from '../AuthContext';
 import { roleLabel } from '../roles';
 import { shareBackup, pickBackupFile, restoreFromData } from '../backup';
@@ -14,11 +16,12 @@ const { width: SCREEN_W } = Dimensions.get('window');
 const PANEL_W = Math.min(300, SCREEN_W * 0.8);
 
 // 메뉴 한 줄. 터치 영역 48 이상.
-function MenuItem({ label, onPress, badge, danger }) {
+function MenuItem({ icon, label, onPress, badge, danger, s, c }) {
   return (
-    <TouchableOpacity style={styles.item} onPress={onPress}>
-      <Text style={[styles.itemText, danger && styles.itemDanger]}>{label}</Text>
-      {badge ? <View style={styles.badge} /> : null}
+    <TouchableOpacity style={s.item} onPress={onPress}>
+      <Icon name={icon} size={20} color={danger ? c.danger : c.textSub} />
+      <Text style={[s.itemText, danger && s.itemDanger]}>{label}</Text>
+      {badge ? <View style={s.badge} /> : null}
     </TouchableOpacity>
   );
 }
@@ -26,6 +29,8 @@ function MenuItem({ label, onPress, badge, danger }) {
 export default function Sidebar({ visible, onClose, navigation }) {
   const insets = useSafeAreaInsets();
   const { user, role, isAdmin, isSuper, logout } = useAuth();
+  const { c, font, space, radius, TAP } = useTheme();
+  const s = useMemo(() => makeStyles(c, font, space, radius, TAP), [c]);
   const slide = useRef(new Animated.Value(-PANEL_W)).current;
   const fade = useRef(new Animated.Value(0)).current;
   const [busy, setBusy] = useState('');
@@ -185,71 +190,71 @@ export default function Sidebar({ visible, onClose, navigation }) {
   return (
     <View style={StyleSheet.absoluteFill}>
       {/* 어두운 배경 — 누르면 닫힘 */}
-      <Animated.View style={[styles.backdrop, { opacity: fade }]}>
+      <Animated.View style={[s.backdrop, { opacity: fade }]}>
         <Pressable style={{ flex: 1 }} onPress={onClose} />
       </Animated.View>
 
       <Animated.View
         style={[
-          styles.panel,
+          s.panel,
           { paddingTop: insets.top + 16, transform: [{ translateX: slide }] }
         ]}
       >
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>메뉴</Text>
-          <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-            <Text style={styles.closeText}>✕</Text>
+        <View style={s.header}>
+          <Text style={s.headerTitle}>메뉴</Text>
+          <TouchableOpacity onPress={onClose} style={s.closeBtn}>
+            <Text style={s.closeText}>✕</Text>
           </TouchableOpacity>
         </View>
 
         {busy ? (
-          <View style={styles.busyBox}>
-            <ActivityIndicator color="#93c5fd" />
-            <Text style={styles.busyText}>{busy}</Text>
+          <View style={s.busyBox}>
+            <ActivityIndicator color={c.accent} />
+            <Text style={s.busyText}>{busy}</Text>
           </View>
         ) : null}
 
         <ScrollView style={{ flex: 1 }}>
-          <MenuItem label="홈" onPress={onClose} />
-          <MenuItem label="건물 등록" onPress={() => go('Register')} />
-          <MenuItem label="건물 조회" onPress={() => go('Search')} />
-          <MenuItem label="지도" onPress={() => go('Map')} />
-          <MenuItem label="설정" onPress={() => go('Settings')} />
+          <MenuItem s={s} c={c} icon="home-outline" label="홈" onPress={onClose} />
+          <MenuItem s={s} c={c} icon="plus-box-outline" label="건물 등록" onPress={() => go('Register')} />
+          <MenuItem s={s} c={c} icon="magnify" label="건물 조회" onPress={() => go('Search')} />
+          <MenuItem s={s} c={c} icon="map-outline" label="지도" onPress={() => go('Map')} />
+          <MenuItem s={s} c={c} icon="cog-outline" label="설정" onPress={() => go('Settings')} />
 
-          <View style={styles.divider} />
+          <View style={s.divider} />
 
-          <MenuItem label="공지사항" onPress={() => notReady('공지사항')} />
-          <MenuItem label="제보하기" onPress={() => go('Suggest')} />
+          <MenuItem s={s} c={c} icon="bullhorn-outline" label="공지사항" onPress={() => notReady('공지사항')} />
+          <MenuItem s={s} c={c} icon="message-alert-outline" label="제보하기" onPress={() => go('Suggest')} />
 
-          <View style={styles.divider} />
+          <View style={s.divider} />
 
-          <Text style={styles.sectionTitle}>내 데이터</Text>
-          <MenuItem label="💾 백업하기" onPress={handleBackup} />
-          <MenuItem label="📥 복원하기" onPress={handleRestore} />
-          <Text style={styles.hint}>
+          <Text style={s.sectionTitle}>내 데이터</Text>
+          <MenuItem s={s} c={c} icon="cloud-upload-outline" label="백업하기" onPress={handleBackup} />
+          <MenuItem s={s} c={c} icon="cloud-download-outline" label="복원하기" onPress={handleRestore} />
+          <Text style={s.hint}>
             내 폰에만 있는 데이터입니다. 폰을 바꾸기 전에 꼭 백업하세요.
           </Text>
 
           {isAdmin && (
             <>
-              <View style={styles.divider} />
-              <Text style={styles.sectionTitle}>관리자 메뉴</Text>
-              <MenuItem label="제보 확인" onPress={() => go('SuggestAdmin')} />
+              <View style={s.divider} />
+              <Text style={s.sectionTitle}>관리자 메뉴</Text>
+              <MenuItem s={s} c={c} icon="inbox-arrow-down-outline" label="제보 확인" onPress={() => go('SuggestAdmin')} />
               {isSuper && (
-                <MenuItem label="어드민 관리" onPress={() => notReady('어드민 관리')} />
+                <MenuItem s={s} c={c} icon="account-cog-outline" label="어드민 관리" onPress={() => notReady('어드민 관리')} />
               )}
             </>
           )}
         </ScrollView>
 
         {/* 계정 — 지금 어떤 역할로 로그인돼 있는지 항상 보이게 */}
-        <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
-          <Text style={styles.email} numberOfLines={1}>{user?.email || ''}</Text>
-          <View style={styles.roleChip}>
-            <Text style={styles.roleChipText}>{roleLabel(role)}</Text>
+        <View style={[s.footer, { paddingBottom: insets.bottom + 16 }]}>
+          <Text style={s.email} numberOfLines={1}>{user?.email || ''}</Text>
+          <View style={s.roleChip}>
+            <Text style={s.roleChipText}>{roleLabel(role)}</Text>
           </View>
-          <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
-            <Text style={styles.logoutText}>로그아웃</Text>
+          <TouchableOpacity style={s.logoutBtn} onPress={handleLogout}>
+            <Text style={s.logoutText}>로그아웃</Text>
           </TouchableOpacity>
         </View>
       </Animated.View>
@@ -257,35 +262,41 @@ export default function Sidebar({ visible, onClose, navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
+const makeStyles = (c, font, space, radius, TAP) => StyleSheet.create({
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)' },
   panel: {
     position: 'absolute', left: 0, top: 0, bottom: 0, width: PANEL_W,
-    backgroundColor: '#1e293b', paddingHorizontal: 20,
+    backgroundColor: c.surface, paddingHorizontal: space.lg,
+    borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: c.line,
   },
-  header: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
-  headerTitle: { flex: 1, color: '#fff', fontSize: 24, fontWeight: 'bold' },
+  header: { flexDirection: 'row', alignItems: 'center', marginBottom: space.lg },
+  headerTitle: { flex: 1, ...font.title, color: c.text },
   closeBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  closeText: { color: '#94a3b8', fontSize: 20 },
-  item: { minHeight: 48, flexDirection: 'row', alignItems: 'center' },
-  itemText: { color: '#e2e8f0', fontSize: 16 },
-  itemDanger: { color: '#f87171' },
-  badge: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#ef4444', marginLeft: 8 },
-  divider: { height: 1, backgroundColor: '#334155', marginVertical: 14 },
-  sectionTitle: { color: '#94a3b8', fontSize: 13, fontWeight: 'bold', marginBottom: 6 },
-  hint: { color: '#64748b', fontSize: 12, lineHeight: 17, marginTop: 6 },
-  busyBox: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
-  busyText: { color: '#cbd5e1', fontSize: 13 },
-  footer: { borderTopWidth: 1, borderTopColor: '#334155', paddingTop: 14 },
-  email: { color: '#cbd5e1', fontSize: 13 },
+  closeText: { color: c.textSub, fontSize: 20 },
+
+  item: { minHeight: TAP, flexDirection: 'row', alignItems: 'center', gap: space.md },
+  itemText: { ...font.body, color: c.text },
+  itemDanger: { color: c.danger },
+  badge: { width: 8, height: 8, borderRadius: 4, backgroundColor: c.danger, marginLeft: space.sm },
+
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: c.line, marginVertical: space.md + 2 },
+  sectionTitle: { ...font.sub, fontWeight: '500', color: c.textMuted, marginBottom: 6 },
+  hint: { ...font.tiny, color: c.textFaint, lineHeight: 18, marginTop: 6 },
+
+  busyBox: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.md },
+  busyText: { ...font.sub, color: c.textSub },
+
+  footer: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.line, paddingTop: space.md + 2 },
+  email: { ...font.sub, color: c.textSub },
   roleChip: {
-    alignSelf: 'flex-start', backgroundColor: '#334155',
-    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginTop: 6,
+    alignSelf: 'flex-start', backgroundColor: c.accentSoft,
+    paddingHorizontal: space.md, paddingVertical: 4, borderRadius: radius.pill, marginTop: 6,
   },
-  roleChipText: { color: '#93c5fd', fontSize: 12, fontWeight: 'bold' },
+  roleChipText: { ...font.tiny, fontWeight: '500', color: c.accent },
   logoutBtn: {
-    backgroundColor: '#dc2626', minHeight: 48, justifyContent: 'center',
-    alignItems: 'center', borderRadius: 8, marginTop: 14,
+    minHeight: TAP, justifyContent: 'center', alignItems: 'center',
+    borderRadius: radius.md, marginTop: space.md + 2,
+    backgroundColor: c.surfaceSoft,
   },
-  logoutText: { color: '#fff', fontWeight: 'bold', fontSize: 15 },
+  logoutText: { ...font.body, fontWeight: '500', color: c.danger },
 });

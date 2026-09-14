@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView,
   StyleSheet, Alert, NativeModules, DeviceEventEmitter, Linking, Platform,
   ActivityIndicator
 } from 'react-native';
+import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '../theme';
 import {
   getSettings, setRadius, setFloating,
   setAlertDistance, setAlertSound, setAlertType,
@@ -30,19 +32,19 @@ const ALERT_TYPE_LIST = [
 ];
 
 // 값 여러 개 중 하나를 고르는 줄
-function ChoiceRow({ label, hint, options, value, suffix, onSelect }) {
+function ChoiceRow({ label, hint, options, value, suffix, onSelect, s }) {
   return (
-    <View style={styles.row}>
-      <Text style={styles.rowLabel}>{label}</Text>
-      {hint ? <Text style={styles.rowHint}>{hint}</Text> : null}
-      <View style={styles.choiceGroup}>
+    <View style={s.row}>
+      <Text style={s.rowLabel}>{label}</Text>
+      {hint ? <Text style={s.rowHint}>{hint}</Text> : null}
+      <View style={s.choiceGroup}>
         {options.map(opt => (
           <TouchableOpacity
             key={opt}
-            style={[styles.choice, value === opt && styles.choiceActive]}
+            style={[s.choice, value === opt && s.choiceActive]}
             onPress={() => onSelect(opt)}
           >
-            <Text style={[styles.choiceText, value === opt && styles.choiceTextActive]}>
+            <Text style={[s.choiceText, value === opt && s.choiceTextActive]}>
               {opt}{suffix}
             </Text>
           </TouchableOpacity>
@@ -53,32 +55,34 @@ function ChoiceRow({ label, hint, options, value, suffix, onSelect }) {
 }
 
 // 켜기/끄기 두 칸짜리 줄
-function ToggleRow({ label, hint, value, onChange }) {
+function ToggleRow({ label, hint, value, onChange, s }) {
   return (
-    <View style={styles.row}>
-      <Text style={styles.rowLabel}>{label}</Text>
-      {hint ? <Text style={styles.rowHint}>{hint}</Text> : null}
-      <View style={styles.choiceGroup}>
+    <View style={s.row}>
+      <Text style={s.rowLabel}>{label}</Text>
+      {hint ? <Text style={s.rowHint}>{hint}</Text> : null}
+      <View style={s.choiceGroup}>
         <TouchableOpacity
-          style={[styles.choice, !value && styles.choiceOff]}
+          style={[s.choice, !value && s.choiceOff]}
           onPress={() => onChange(false)}
         >
-          <Text style={[styles.choiceText, !value && styles.choiceTextActive]}>끔</Text>
+          <Text style={[s.choiceText, !value && s.choiceTextActive]}>끔</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.choice, value && styles.choiceActive]}
+          style={[s.choice, value && s.choiceActive]}
           onPress={() => onChange(true)}
         >
-          <Text style={[styles.choiceText, value && styles.choiceTextActive]}>켬</Text>
+          <Text style={[s.choiceText, value && s.choiceTextActive]}>켬</Text>
         </TouchableOpacity>
       </View>
     </View>
   );
 }
 
-export default function SettingsScreen() {
+export default function SettingsScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const { isAdmin } = useAuth();
+  const { c, font, space, radius, TAP } = useTheme();
+  const s = useMemo(() => makeStyles(c, font, space, radius, TAP), [c]);
   const [settings, setSettings] = useState(null);
   const [muteCount, setMuteCount] = useState(null);
 
@@ -147,7 +151,7 @@ export default function SettingsScreen() {
     } catch (e) {}
   };
 
-  if (!settings) return <View style={styles.container} />;
+  if (!settings) return <View style={s.container} />;
 
   const update = (patch) => {
     const next = { ...settings, ...patch };
@@ -310,12 +314,20 @@ export default function SettingsScreen() {
   const migCount = Object.keys(migState?.idMap || {}).length;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}>
+    <View style={{ flex: 1, backgroundColor: c.bg }}>
+    <View style={[s.header, { paddingTop: insets.top + space.sm }]}>
+      <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}>
+        <Icon name="arrow-left" size={24} color={c.textSub} />
+      </TouchableOpacity>
+      <Text style={s.screenTitle}>설정</Text>
+    </View>
+    <ScrollView style={s.container} contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}>
 
       {/* 근접 알림 */}
-      <Text style={styles.section}>근접 알림</Text>
-      <View style={styles.card}>
+      <Text style={s.section}>근접 알림</Text>
+      <View style={s.card}>
         <ChoiceRow
+          s={s}
           label="건물 감지 반경"
           hint="이 거리 안에 들어오면 건물 정보가 뜹니다"
           options={RADIUS_OPTIONS}
@@ -324,6 +336,7 @@ export default function SettingsScreen() {
           onSelect={onRadius}
         />
         <ToggleRow
+          s={s}
           label="플로팅 버튼"
           hint="화면 위에 떠 있는 동그란 버튼"
           value={settings.floating}
@@ -332,9 +345,10 @@ export default function SettingsScreen() {
       </View>
 
       {/* 강력 알림 */}
-      <Text style={styles.section}>강력 알림</Text>
-      <View style={styles.card}>
+      <Text style={s.section}>강력 알림</Text>
+      <View style={s.card}>
         <ChoiceRow
+          s={s}
           label="알림 거리"
           hint="이 거리의 2배만큼 벗어나야 다시 울립니다"
           options={ALERT_DISTANCE_OPTIONS}
@@ -343,16 +357,18 @@ export default function SettingsScreen() {
           onSelect={onAlertDistance}
         />
         <ToggleRow
+          s={s}
           label="알림음"
           hint="끄면 화면에만 표시됩니다"
           value={settings.alertSound}
           onChange={onAlertSound}
         />
 
-        <View style={styles.divider} />
+        <View style={s.divider} />
 
         {ALERT_TYPE_LIST.map(t => (
           <ToggleRow
+          s={s}
             key={t.key}
             label={t.label}
             hint={t.hint}
@@ -363,75 +379,75 @@ export default function SettingsScreen() {
       </View>
 
       {/* 내 데이터 */}
-      <Text style={styles.section}>내 데이터</Text>
-      <View style={styles.card}>
-        <Text style={styles.muteCount}>{myCount.buildings}건</Text>
-        <Text style={styles.rowHint}>
+      <Text style={s.section}>내 데이터</Text>
+      <View style={s.card}>
+        <Text style={s.muteCount}>{myCount.buildings}건</Text>
+        <Text style={s.rowHint}>
           내가 등록한 건물입니다. 이 폰 안에만 저장되며 서버로 전송되지 않습니다.
           {myCount.notes > 0 ? `\n공용 건물에 붙여둔 내 메모: ${myCount.notes}건` : ''}
         </Text>
       </View>
 
       {/* 꺼둔 지점 */}
-      <Text style={styles.section}>안 보기로 한 지점</Text>
-      <View style={styles.card}>
-        <Text style={styles.muteCount}>
+      <Text style={s.section}>안 보기로 한 지점</Text>
+      <View style={s.card}>
+        <Text style={s.muteCount}>
           {muteCount === null ? '확인 중...' : `${muteCount}곳`}
         </Text>
-        <Text style={styles.rowHint}>
+        <Text style={s.rowHint}>
           알림을 탭해서 "오늘은 그만" 또는 "앞으로 안 봄"을 고른 지점입니다.
           오늘만 꺼둔 것은 날짜가 바뀌면 저절로 되살아납니다.
         </Text>
         <TouchableOpacity
-          style={[styles.dangerBtn, !muteCount && styles.dangerBtnOff]}
+          style={[s.dangerBtn, !muteCount && s.dangerBtnOff]}
           onPress={onClearMutes}
           disabled={!muteCount}
         >
-          <Text style={styles.dangerBtnText}>전체 해제</Text>
+          <Text style={s.dangerBtnText}>전체 해제</Text>
         </TouchableOpacity>
       </View>
 
       {/* 데이터 이전 — 어드민만 */}
       {isAdmin && (
         <>
-          <Text style={styles.section}>데이터 이전 (관리자)</Text>
-          <View style={styles.card}>
-            <Text style={styles.rowHint}>
+          <Text style={s.section}>데이터 이전 (관리자)</Text>
+          <View style={s.card}>
+            <Text style={s.rowHint}>
               서버의 공용 건물을 내 폰으로 회수한 뒤, 검증된 것만 다시 공용으로 올리는 작업입니다.
               순서대로 진행하세요.
             </Text>
 
             {migBusy ? (
-              <View style={styles.busyBox}>
-                <ActivityIndicator color="#3b82f6" />
-                <Text style={styles.busyText}>{migMsg || '처리 중...'}</Text>
+              <View style={s.busyBox}>
+                <ActivityIndicator color={c.accent} />
+                <Text style={s.busyText}>{migMsg || '처리 중...'}</Text>
               </View>
             ) : null}
 
             <TouchableOpacity
-              style={[styles.stepBtn, migBusy && styles.stepBtnOff]}
+              style={[s.stepBtn, migBusy && s.stepBtnOff]}
               onPress={onImport}
               disabled={migBusy}
             >
-              <Text style={styles.stepBtnText}>① 서버 데이터를 내 폰으로 가져오기</Text>
+              <Text style={s.stepBtnText}>① 서버 데이터를 내 폰으로 가져오기</Text>
             </TouchableOpacity>
 
             {migCount > 0 && (
-              <Text style={styles.migInfo}>
+              <Text style={s.migInfo}>
                 가져온 원본: {migCount}건
                 {migState?.deletedAt ? ` · 서버에서 삭제 완료` : ''}
               </Text>
             )}
 
             <TouchableOpacity
-              style={[styles.dangerBtn, (migBusy || migCount === 0) && styles.dangerBtnOff]}
+              style={[s.dangerBtn, (migBusy || migCount === 0) && s.dangerBtnOff]}
               onPress={onDeleteOriginals}
               disabled={migBusy || migCount === 0}
             >
-              <Text style={styles.dangerBtnText}>③ 서버의 옛날 데이터 삭제</Text>
+              <Text style={s.dangerBtnText}>③ 서버의 옛날 데이터 삭제</Text>
             </TouchableOpacity>
 
-            <Text style={styles.warnText}>
+            <Text style={s.warnText}>
               ③은 분류 작업이 완전히 끝난 뒤에만 누르세요. 되돌릴 수 없습니다.
             </Text>
           </View>
@@ -439,54 +455,65 @@ export default function SettingsScreen() {
       )}
 
       {/* 기타 */}
-      <Text style={styles.section}>기타</Text>
-      <View style={styles.card}>
-        <TouchableOpacity style={styles.plainBtn} onPress={onBatteryOptimization}>
-          <Text style={styles.plainBtnText}>🔋 배터리 최적화 예외 설정</Text>
+      <Text style={s.section}>기타</Text>
+      <View style={s.card}>
+        <TouchableOpacity style={s.plainBtn} onPress={onBatteryOptimization}>
+          <Text style={s.plainBtnText}>🔋 배터리 최적화 예외 설정</Text>
         </TouchableOpacity>
       </View>
 
     </ScrollView>
+    </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc', padding: 16 },
-  section: { fontSize: 15, fontWeight: 'bold', color: '#64748b', marginTop: 16, marginBottom: 8, marginLeft: 4 },
-  card: { backgroundColor: '#fff', borderRadius: 12, padding: 16, elevation: 1 },
-  row: { marginBottom: 18 },
-  rowLabel: { fontSize: 16, fontWeight: 'bold', color: '#1e293b' },
-  rowHint: { fontSize: 12, color: '#94a3b8', marginTop: 3, lineHeight: 17 },
-  choiceGroup: { flexDirection: 'row', gap: 8, marginTop: 10 },
-  // 장갑 끼고도 눌리게 최소 48
+const makeStyles = (c, font, space, radius, TAP) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.bg, paddingHorizontal: space.lg },
+  header: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: space.sm, paddingBottom: space.sm,
+  },
+  backBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  screenTitle: { ...font.title, color: c.text, marginLeft: space.xs },
+  section: { ...font.sub, fontWeight: '500', color: c.textMuted, marginTop: space.xl, marginBottom: space.sm, marginLeft: space.xs },
+  card: {
+    backgroundColor: c.surface, borderRadius: radius.lg, padding: space.lg,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: c.line,
+  },
+  row: { marginBottom: space.lg },
+  rowLabel: { ...font.body, fontWeight: '500', color: c.text },
+  rowHint: { ...font.sub, color: c.textMuted, marginTop: 3, lineHeight: 19 },
+  choiceGroup: { flexDirection: 'row', gap: space.sm, marginTop: space.sm + 2 },
   choice: {
-    flex: 1, minHeight: 48, justifyContent: 'center', alignItems: 'center',
-    backgroundColor: '#f1f5f9', borderRadius: 8, borderWidth: 1, borderColor: '#e2e8f0',
+    flex: 1, minHeight: TAP, justifyContent: 'center', alignItems: 'center',
+    backgroundColor: c.surfaceSoft, borderRadius: radius.sm,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: c.line,
   },
-  choiceActive: { backgroundColor: '#3b82f6', borderColor: '#3b82f6' },
-  choiceOff: { backgroundColor: '#94a3b8', borderColor: '#94a3b8' },
-  choiceText: { fontSize: 15, fontWeight: 'bold', color: '#475569' },
-  choiceTextActive: { color: '#fff' },
-  divider: { height: 1, backgroundColor: '#e2e8f0', marginBottom: 18 },
-  muteCount: { fontSize: 22, fontWeight: 'bold', color: '#1e293b', marginBottom: 4 },
+  choiceActive: { backgroundColor: c.accent, borderColor: c.accent },
+  choiceOff: { backgroundColor: c.textFaint, borderColor: c.textFaint },
+  choiceText: { ...font.body, fontWeight: '500', color: c.textSub },
+  choiceTextActive: { color: c.onAccent },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: c.line, marginBottom: space.lg },
+  muteCount: { fontSize: 26, fontWeight: '500', color: c.text, marginBottom: 4 },
   dangerBtn: {
-    marginTop: 14, minHeight: 48, justifyContent: 'center', alignItems: 'center',
-    backgroundColor: '#fee2e2', borderRadius: 8,
+    marginTop: space.md + 2, minHeight: TAP, justifyContent: 'center', alignItems: 'center',
+    backgroundColor: c.dangerSoft, borderRadius: radius.sm,
   },
-  dangerBtnOff: { backgroundColor: '#f1f5f9' },
-  dangerBtnText: { color: '#dc2626', fontWeight: 'bold', fontSize: 15 },
-  plainBtn: { minHeight: 48, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f1f5f9', borderRadius: 8 },
-  plainBtnText: { color: '#475569', fontWeight: 'bold', fontSize: 15 },
-
-  // 데이터 이전
+  dangerBtnOff: { backgroundColor: c.surfaceSoft },
+  dangerBtnText: { ...font.body, fontWeight: '500', color: c.danger },
+  plainBtn: {
+    minHeight: TAP, justifyContent: 'center', alignItems: 'center',
+    backgroundColor: c.surfaceSoft, borderRadius: radius.sm,
+  },
+  plainBtnText: { ...font.body, fontWeight: '500', color: c.textSub },
   stepBtn: {
-    marginTop: 14, minHeight: 48, justifyContent: 'center', alignItems: 'center',
-    backgroundColor: '#e0f2fe', borderRadius: 8,
+    marginTop: space.md + 2, minHeight: TAP, justifyContent: 'center', alignItems: 'center',
+    backgroundColor: c.accentSoft, borderRadius: radius.sm,
   },
-  stepBtnOff: { backgroundColor: '#f1f5f9' },
-  stepBtnText: { color: '#0369a1', fontWeight: 'bold', fontSize: 15 },
-  migInfo: { fontSize: 13, color: '#475569', marginTop: 10, fontWeight: 'bold' },
-  warnText: { fontSize: 12, color: '#b45309', marginTop: 10, lineHeight: 17 },
-  busyBox: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14 },
-  busyText: { fontSize: 14, color: '#475569' },
+  stepBtnOff: { backgroundColor: c.surfaceSoft },
+  stepBtnText: { ...font.body, fontWeight: '500', color: c.accent },
+  migInfo: { ...font.sub, color: c.textSub, marginTop: space.sm + 2, fontWeight: '500' },
+  warnText: { ...font.sub, color: c.warn, marginTop: space.sm + 2, lineHeight: 19 },
+  busyBox: { flexDirection: 'row', alignItems: 'center', gap: space.sm + 2, marginTop: space.md + 2 },
+  busyText: { ...font.sub, color: c.textSub },
 });

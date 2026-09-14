@@ -25,16 +25,16 @@ function AppNavigator() {
       <Stack.Navigator>
         {user ? (
           <>
-            <Stack.Screen name="Home" component={HomeScreen} options={{ title: '스마트라이더' }} />
-            <Stack.Screen name="Search" component={SearchScreen} options={{ title: '건물 조회' }} />
-            <Stack.Screen name="Register" component={RegisterScreen} options={{ title: '건물 등록' }} />
-            <Stack.Screen name="Detail" component={DetailScreen} options={{ title: '상세 정보' }} />
+            <Stack.Screen name="Home" component={HomeScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="Search" component={SearchScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="Register" component={RegisterScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="Detail" component={DetailScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Map" component={MapScreen} options={{ title: '지도' }} />
             <Stack.Screen name="LocationPicker" component={LocationPickerScreen} options={{ title: '위치 선택' }} />
-            <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: '설정' }} />
+            <Stack.Screen name="Settings" component={SettingsScreen} options={{ headerShown: false }} />
             <Stack.Screen name="AlertDetail" component={AlertDetailScreen} options={{ title: '강력 알림 지점' }} />
-            <Stack.Screen name="Suggest" component={SuggestScreen} options={{ title: '제보하기' }} />
-            <Stack.Screen name="SuggestAdmin" component={SuggestAdminScreen} options={{ title: '제보 확인' }} />
+            <Stack.Screen name="Suggest" component={SuggestScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="SuggestAdmin" component={SuggestAdminScreen} options={{ headerShown: false }} />
           </>
         ) : (
           <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />

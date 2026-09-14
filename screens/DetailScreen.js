@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   ScrollView, StyleSheet, Alert, ActivityIndicator, Share, Image,
@@ -15,6 +15,10 @@ import {
 } from '../personalDB';
 import { promoteToPublic } from '../migration';
 import { pickImages, takePhoto, uploadBuildingImages, deleteImageByUrl } from '../imageUpload';
+import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { copyBuildingMemo } from '../copyUtil';
+import { useTheme } from '../theme';
 
 const SCREEN = Dimensions.get('window');
 
@@ -181,16 +185,22 @@ function ImageViewer({ visible, images, startIndex, onClose }) {
 
 export default function DetailScreen({ navigation, route }) {
   const { buildingId } = route.params;
+  const insets = useSafeAreaInsets();
+  const { c, font, space, radius, TAP } = useTheme();
+  const s = useMemo(() => makeStyles(c, font, space, radius, TAP), [c]);
+
+  const { isAdmin } = useAuth();
+
   const [building, setBuilding] = useState(null);
   const [editMode, setEditMode] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const [locationChanged, setLocationChanged] = useState(false);
-
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerIndex, setViewerIndex] = useState(0);
 
-  const { isAdmin } = useAuth();
+  // local_ 로 시작하면 내 폰에 있는 건물이다.
+  const isMine = isLocalId(buildingId);
 
   // 즐겨찾기 — 내 폰에만 저장된다
   const [fav, setFav] = useState(false);
@@ -202,19 +212,13 @@ export default function DetailScreen({ navigation, route }) {
     invalidateBuildingsCache();
   };
 
-  // local_ 로 시작하면 내 폰에 있는 건물이다.
-  const isMine = isLocalId(buildingId);
-
   useEffect(() => {
     const load = async () => {
       try {
         let data;
-
         if (isMine) {
-          // ── 개인 건물: 폰에서 읽는다 ──
           data = await getPersonalBuilding(buildingId);
         } else {
-          // ── 공용 건물: 서버에서 읽고, 내 메모가 있으면 덧씌운다 ──
           data = await getBuilding(buildingId);
           if (data) {
             const note = await getPersonalNote(buildingId);
@@ -251,19 +255,12 @@ export default function DetailScreen({ navigation, route }) {
   }, [buildingId]);
 
   // ── 사진 (공용 건물 + 어드민만) ────────────────────────
-  // 개인 건물에는 사진을 두지 않는다.
-  // 폰에만 두면 기기를 바꿀 때 사라지고, 서버에 두면 전국 라이더의
-  // 사진을 다 떠안게 된다. 공용으로 쓸 사진은 제보하기로 받는다.
-  //
   // 업로드는 [저장]을 누를 때 한 번에 한다.
-  // 고르자마자 올려버리면, 취소하고 나갔을 때 서버에만 파일이 남아
-  // 아무도 찾지 못하는 쓰레기가 된다.
+  // 고르자마자 올려버리면, 취소하고 나갔을 때 서버에만 파일이 남는다.
   const canEditPhotos = !isMine && isAdmin;
+  const [pendingPhotos, setPendingPhotos] = useState([]);
+  const [removedPhotos, setRemovedPhotos] = useState([]);
 
-  const [pendingPhotos, setPendingPhotos] = useState([]);   // 올릴 사진 (로컬)
-  const [removedPhotos, setRemovedPhotos] = useState([]);   // 지울 사진 (주소)
-
-  // 화면에 보여줄 기존 사진 = 전체 - 지우기로 표시한 것
   const shownImages = (building?.images || []).filter(u => !removedPhotos.includes(u));
 
   const addPhotos = async (fromCamera) => {
@@ -281,7 +278,6 @@ export default function DetailScreen({ navigation, route }) {
   const markRemove = (url) => setRemovedPhotos(p => [...p, url]);
   const undoRemove = (url) => setRemovedPhotos(p => p.filter(u => u !== url));
   const dropPending = (idx) => setPendingPhotos(p => p.filter((_, i) => i !== idx));
-
   const resetPhotoEdits = () => { setPendingPhotos([]); setRemovedPhotos([]); };
 
   const handleSave = async () => {
@@ -304,20 +300,17 @@ export default function DetailScreen({ navigation, route }) {
       const payload = { ...building, images: nextImages, timestamp: Date.now() };
 
       if (isMine) {
-        // 내 건물 → 폰에 저장
         await savePersonalBuilding(payload);
       } else if (isAdmin) {
-        // 어드민 → 공용 데이터를 실제로 수정
         await updateBuilding(payload);
       } else {
         // 일반 사용자가 공용 건물을 수정 → 출입 정보만 내 폰에 붙인다.
-        // 공용 데이터는 바뀌지 않는다.
         await savePersonalNote(buildingId, {
           memo: building.memo, memo2: building.memo2,
         });
       }
+
       // DB 반영이 끝난 뒤에 Storage 파일을 지운다.
-      // 순서를 반대로 하면 저장이 실패했을 때 사진만 사라진다.
       for (const url of removedPhotos) {
         await deleteImageByUrl(url);
       }
@@ -327,7 +320,7 @@ export default function DetailScreen({ navigation, route }) {
       invalidateBuildingsCache();
       setEditMode(false);
       setLocationChanged(false);
-      setSaveMsg('저장 완료!');
+      setSaveMsg('저장 완료');
       setTimeout(() => setSaveMsg(''), 2000);
     } catch (e) {
       Alert.alert('오류', '저장 실패: ' + e.message);
@@ -352,9 +345,6 @@ export default function DetailScreen({ navigation, route }) {
             if (isMine) {
               await deletePersonalBuilding(buildingId);
             } else {
-              // 사진을 먼저 지운다.
-              // DB를 먼저 지우면 사진 주소를 잃어버려서
-              // Storage에 남은 파일을 영영 찾지 못한다.
               for (const url of (building.images || [])) {
                 await deleteImageByUrl(url);
               }
@@ -384,18 +374,12 @@ export default function DetailScreen({ navigation, route }) {
             setSaving(true);
             try {
               const newId = await promoteToPublic({ ...building, id: buildingId });
-              // 즐겨찾기도 새 번호로 옮긴다
               if (fav) {
                 await setFavorite(buildingId, false);
                 await setFavorite(newId, true);
               }
               invalidateBuildingsCache();
-              console.log('[PROMOTE] 새 공용 id:', newId);
-              Alert.alert(
-                '완료',
-                `공용 데이터로 올렸습니다.\n\n새 번호: ${newId}\n\n` +
-                'Firebase 콘솔에서는 목록 맨 아래에 있습니다.'
-              );
+              Alert.alert('완료', `공용 데이터로 올렸습니다.\n\n새 번호: ${newId}`);
               navigation.goBack();
             } catch (e) {
               Alert.alert('오류', '올리기 실패: ' + e.message);
@@ -409,300 +393,344 @@ export default function DetailScreen({ navigation, route }) {
   };
 
   const handleShare = () => {
-    Share.share({
-      message: `[스마트 라이더]\n건물명: ${building.name}\n출입정보: ${building.memo || '없음'}`
-    });
+    const lines = [building.name];
+    if (building.memo) lines.push(`출입: ${building.memo}`);
+    if (building.memo2) lines.push(`백업: ${building.memo2}`);
+    if (building.shortcut) lines.push(`샛길: ${building.shortcut}`);
+    if (building.note) lines.push(`특이사항: ${building.note}`);
+    Share.share({ message: lines.join('\n') }).catch(() => {});
   };
 
-  // 지도 위치 수정 화면으로 이동
-  const openLocationPicker = () => {
-    navigation.navigate('LocationPicker', {
-      initialLocation: building.location || null,
-      onPicked: (loc) => {
-        setBuilding(prev => ({ ...prev, location: loc }));
-        setLocationChanged(true);
-      }
-    });
-  };
+  const copyMemo = () => copyBuildingMemo(building);
 
-  if (!building) return (
-    <View style={styles.loadingContainer}>
-      <ActivityIndicator size="large" color="#3b82f6" />
-    </View>
-  );
+  if (!building) {
+    return (
+      <View style={s.screen}>
+        <ActivityIndicator size="large" color={c.accent} style={{ marginTop: 60 }} />
+      </View>
+    );
+  }
+
+  const set = (k, v) => setBuilding(p => ({ ...p, [k]: v }));
 
   return (
-    <View style={{ flex: 1 }}>
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 340 }}>
-      <Text style={styles.title}>건물 상세 정보</Text>
-
-      {/* 이 건물이 어느 쪽 데이터인지 + 즐겨찾기 */}
-      <View style={styles.topRow}>
-        <View style={[styles.scopeBadge, isMine ? styles.scopeMine : styles.scopePublic]}>
-          <Text style={styles.scopeBadgeText}>
-            {isMine ? '🔒 내 폰에만 저장됨' : '🌐 공용 데이터'}
-            {building.hasPersonalNote ? ' · 내 메모 있음' : ''}
-          </Text>
+    <>
+      <View style={s.screen}>
+        {/* 헤더 */}
+        <View style={[s.header, { paddingTop: insets.top + space.sm }]}>
+          <TouchableOpacity style={s.iconBtn} onPress={() => navigation.goBack()}>
+            <Icon name="arrow-left" size={24} color={c.textSub} />
+          </TouchableOpacity>
+          <View style={s.headerMid}>
+            <Icon
+              name={isMine ? 'lock-outline' : 'web'}
+              size={15}
+              color={isMine ? c.accent : c.publicColor}
+            />
+            <Text style={s.headerScope}>
+              {isMine ? '내 폰에만 저장됨' : '공용 데이터'}
+              {building.hasPersonalNote ? ' · 내 메모' : ''}
+            </Text>
+          </View>
+          <TouchableOpacity style={s.iconBtn} onPress={onToggleFav}>
+            <Icon
+              name={fav ? 'star' : 'star-outline'}
+              size={24}
+              color={fav ? c.star : c.textSub}
+            />
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity
-          style={[styles.favStar, fav && styles.favStarOn]}
-          onPress={onToggleFav}
+
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-          <Text style={styles.favStarText}>{fav ? '★' : '☆'}</Text>
-        </TouchableOpacity>
-      </View>
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ padding: space.lg, paddingBottom: insets.bottom + 40 }}
+            keyboardShouldPersistTaps="handled"
+          >
 
-      {saveMsg ? (
-        <View style={styles.saveMsg}>
-          <Text style={styles.saveMsgText}>{saveMsg}</Text>
-        </View>
-      ) : null}
-
-      {editMode ? (
-        <>
-          {/* 공용 데이터를 직접 고치는 중이면 확실히 알려준다 */}
-          {!isMine && isAdmin && (
-            <View style={styles.editWarn}>
-              <Text style={styles.editWarnText}>
-                공용 데이터를 수정합니다. 출입 정보를 넣으면 모든 사용자에게 공개됩니다.
-              </Text>
-            </View>
-          )}
-          {!isMine && !isAdmin && (
-            <View style={styles.editNote}>
-              <Text style={styles.editNoteText}>
-                출입 정보만 내 폰에 저장됩니다. 다른 항목은 바뀌지 않습니다.
-              </Text>
-            </View>
-          )}
-
-          <Text style={styles.label}>건물 이름</Text>
-          <TextInput
-            style={styles.input}
-            value={building.name}
-            onChangeText={v => setBuilding(p => ({ ...p, name: v }))}
-          />
-          <Text style={styles.label}>출입 정보</Text>
-          <TextInput
-            style={styles.input}
-            value={building.memo || ''}
-            onChangeText={v => setBuilding(p => ({ ...p, memo: v }))}
-            keyboardType="numeric"
-          />
-            <Text style={styles.label}>출입 정보 2 (백업)</Text>
-          <TextInput
-            style={styles.input}
-            value={building.memo2 || ''}
-            onChangeText={v => setBuilding(p => ({ ...p, memo2: v }))}
-            keyboardType="numeric"
-            placeholder="비번이 바뀔 때를 대비한 예비 (선택)"
-            placeholderTextColor="#94a3b8"
-          />
-          <Text style={styles.label}>특이사항</Text>
-          <TextInput
-            style={[styles.input, styles.inputMulti]}
-            value={building.note || ''}
-            onChangeText={v => setBuilding(p => ({ ...p, note: v }))}
-            multiline
-          />
-          <Text style={styles.label}>샛길 정보</Text>
-          <TextInput
-            style={[styles.input, styles.inputMulti]}
-            value={building.shortcut || ''}
-            onChangeText={v => setBuilding(p => ({ ...p, shortcut: v }))}
-            multiline
-          />
-        
-          {/* 사진 — 공용 건물 + 어드민만 */}
-          {canEditPhotos && (
-            <View style={styles.photoBox}>
-              <Text style={styles.label}>
-                사진 · 배치도 ({shownImages.length + pendingPhotos.length})
-              </Text>
-
-              {/* 이미 올라가 있는 사진 */}
-              {(building.images || []).map((url, i) => {
-                const marked = removedPhotos.includes(url);
-                return (
-                  <View key={'old' + i} style={styles.photoRow}>
-                    <Image
-                      source={{ uri: url }}
-                      style={[styles.photoThumb, marked && styles.photoThumbOff]}
-                    />
-                    {marked ? (
-                      <TouchableOpacity style={styles.photoUndo} onPress={() => undoRemove(url)}>
-                        <Text style={styles.photoUndoText}>되돌리기</Text>
-                      </TouchableOpacity>
-                    ) : (
-                      <TouchableOpacity style={styles.photoDel} onPress={() => markRemove(url)}>
-                        <Text style={styles.photoDelText}>✕ 삭제</Text>
-                      </TouchableOpacity>
-                    )}
+            {editMode ? (
+              <>
+                {!isMine && isAdmin && (
+                  <View style={s.warnBox}>
+                    <Text style={s.warnText}>
+                      공용 데이터를 수정합니다. 출입 정보를 넣으면 모든 사용자에게 공개됩니다.
+                    </Text>
                   </View>
-                );
-              })}
-
-              {/* 새로 고른 사진 — 아직 안 올라감 */}
-              {pendingPhotos.map((uri, i) => (
-                <View key={'new' + i} style={styles.photoRow}>
-                  <Image source={{ uri }} style={styles.photoThumb} />
-                  <View style={styles.photoNewTag}>
-                    <Text style={styles.photoNewTagText}>새 사진</Text>
+                )}
+                {!isMine && !isAdmin && (
+                  <View style={s.noteBox}>
+                    <Text style={s.noteText}>
+                      출입 정보만 내 폰에 저장됩니다. 다른 항목은 바뀌지 않습니다.
+                    </Text>
                   </View>
-                  <TouchableOpacity style={styles.photoDel} onPress={() => dropPending(i)}>
-                    <Text style={styles.photoDelText}>✕ 빼기</Text>
+                )}
+
+                <Text style={s.label}>건물 이름</Text>
+                <TextInput
+                  style={s.input}
+                  value={building.name}
+                  onChangeText={v => set('name', v.slice(0, 25))}
+                  maxLength={25}
+                  placeholderTextColor={c.textFaint}
+                />
+
+                <Text style={s.label}>출입 정보</Text>
+                <TextInput
+                  style={[s.input, s.inputMono]}
+                  value={building.memo}
+                  onChangeText={v => set('memo', v)}
+                  placeholder="비밀번호 등"
+                  placeholderTextColor={c.textFaint}
+                  multiline
+                />
+
+                <Text style={s.label}>출입 정보 2 (백업)</Text>
+                <TextInput
+                  style={[s.input, s.inputMono]}
+                  value={building.memo2}
+                  onChangeText={v => set('memo2', v)}
+                  placeholder="비번이 바뀔 때를 대비한 예비"
+                  placeholderTextColor={c.textFaint}
+                  multiline
+                />
+
+                <Text style={s.label}>샛길 정보</Text>
+                <TextInput
+                  style={[s.input, s.inputMulti]}
+                  value={building.shortcut}
+                  onChangeText={v => set('shortcut', v)}
+                  multiline
+                  placeholderTextColor={c.textFaint}
+                />
+
+                <Text style={s.label}>특이사항</Text>
+                <TextInput
+                  style={[s.input, s.inputMulti]}
+                  value={building.note}
+                  onChangeText={v => set('note', v)}
+                  multiline
+                  placeholderTextColor={c.textFaint}
+                />
+
+                {/* 사진 — 공용 건물 + 어드민만 */}
+                {canEditPhotos && (
+                  <>
+                    <Text style={s.label}>
+                      사진 · 배치도 ({shownImages.length + pendingPhotos.length})
+                    </Text>
+
+                    {(building.images || []).map((url, i) => {
+                      const marked = removedPhotos.includes(url);
+                      return (
+                        <View key={'old' + i} style={s.photoRow}>
+                          <Image
+                            source={{ uri: url }}
+                            style={[s.photoThumb, marked && s.photoThumbOff]}
+                          />
+                          {marked ? (
+                            <TouchableOpacity style={s.photoUndo} onPress={() => undoRemove(url)}>
+                              <Text style={s.photoUndoText}>되돌리기</Text>
+                            </TouchableOpacity>
+                          ) : (
+                            <TouchableOpacity style={s.photoDel} onPress={() => markRemove(url)}>
+                              <Icon name="close" size={16} color={c.danger} />
+                              <Text style={s.photoDelText}>삭제</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      );
+                    })}
+
+                    {pendingPhotos.map((uri, i) => (
+                      <View key={'new' + i} style={s.photoRow}>
+                        <Image source={{ uri }} style={s.photoThumb} />
+                        <View style={s.newTag}><Text style={s.newTagText}>새 사진</Text></View>
+                        <TouchableOpacity style={s.photoDel} onPress={() => dropPending(i)}>
+                          <Icon name="close" size={16} color={c.danger} />
+                          <Text style={s.photoDelText}>빼기</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+
+                    <View style={s.btnRow}>
+                      <TouchableOpacity style={s.btnSub} onPress={() => addPhotos(true)}>
+                        <Icon name="camera-outline" size={18} color={c.accent} />
+                        <Text style={s.btnSubText}>찍기</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={s.btnSub} onPress={() => addPhotos(false)}>
+                        <Icon name="image-outline" size={18} color={c.accent} />
+                        <Text style={s.btnSubText}>앨범에서</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
+
+                {/* 위치 */}
+                <Text style={s.label}>위치</Text>
+                <View style={s.locBox}>
+                  {building.location ? (
+                    <Text style={s.locOk}>
+                      {Number(building.location.lat).toFixed(6)}, {Number(building.location.lng).toFixed(6)}
+                      {locationChanged ? '  (변경됨)' : ''}
+                    </Text>
+                  ) : (
+                    <Text style={s.locNone}>
+                      위치가 없습니다. 넣어야 근처에 갔을 때 알림이 뜹니다.
+                    </Text>
+                  )}
+                  <TouchableOpacity
+                    style={s.btnSub}
+                    onPress={() => navigation.navigate('LocationPicker', {
+                      initialLocation: building.location,
+                      onPicked: (loc) => { set('location', loc); setLocationChanged(true); },
+                    })}
+                  >
+                    <Icon name="map-marker-outline" size={18} color={c.accent} />
+                    <Text style={s.btnSubText}>지도에서 위치 지정</Text>
                   </TouchableOpacity>
                 </View>
-              ))}
 
-              <View style={styles.photoBtnRow}>
-                <TouchableOpacity style={styles.photoBtn} onPress={() => addPhotos(true)}>
-                  <Text style={styles.photoBtnText}>📷 찍기</Text>
+                <TouchableOpacity
+                  style={[s.btnPrimary, saving && s.btnOff]}
+                  onPress={handleSave}
+                  disabled={saving}
+                >
+                  {saving
+                    ? <View style={s.savingRow}>
+                        <ActivityIndicator color={c.onAccent} />
+                        <Text style={s.btnPrimaryText}>{saveMsg || '저장 중...'}</Text>
+                      </View>
+                    : <Text style={s.btnPrimaryText}>저장</Text>}
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.photoBtn} onPress={() => addPhotos(false)}>
-                  <Text style={styles.photoBtnText}>🖼 앨범에서</Text>
+                <TouchableOpacity
+                  style={s.btnPlain}
+                  onPress={() => {
+                    setEditMode(false); setLocationChanged(false); resetPhotoEdits();
+                  }}
+                >
+                  <Text style={s.btnPlainText}>취소</Text>
                 </TouchableOpacity>
-              </View>
-            </View>
-          )}
-
-          {/* 지도 위치 수정 */}
-          <TouchableOpacity style={styles.btnLocation} onPress={openLocationPicker}>
-            <Text style={styles.btnLocationText}>📍 지도 위치 수정</Text>
-          </TouchableOpacity>
-          {building.location && (
-            <Text style={styles.coordText}>
-              위도: {building.location.lat?.toFixed(6)}, 경도: {building.location.lng?.toFixed(6)}
-            </Text>
-          )}
-          {locationChanged && (
-            <View style={styles.locChangedBox}>
-              <Text style={styles.locChangedText}>위치 정보가 변경되었습니다. 저장 버튼을 눌러 완료하세요.</Text>
-            </View>
-          )}
-
-          <View style={styles.btnRow}>
-            <TouchableOpacity style={styles.btnSave} onPress={handleSave} disabled={saving}>
-              {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnSaveText}>저장</Text>}
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.btnCancel} onPress={() => { setEditMode(false); setLocationChanged(false); resetPhotoEdits(); }}>
-              <Text style={styles.btnCancelText}>취소</Text>
-            </TouchableOpacity>
-          </View>
-        </>
-      ) : (
-        <>
-          <View style={styles.infoBox}>
-            <Text style={styles.infoLabel}>이름</Text>
-            <Text style={styles.infoValue}>{building.name}</Text>
-          </View>
-           <View style={styles.infoBox}>
-            <Text style={styles.infoLabel}>출입 정보</Text>
-            <Text style={styles.infoValue}>{building.memo || '없음'}</Text>
-            {!!building.memo2 && (
+              </>
+            ) : (
               <>
-                <Text style={[styles.infoLabel, { marginTop: 10 }]}>출입 정보 2 (백업)</Text>
-                <Text style={[styles.infoValue, { color: '#9a3412' }]}>{building.memo2}</Text>
+                <Text style={s.name}>{building.name}</Text>
+
+                {/* 비번 — 라이더가 제일 급하게 보는 것이라 크게 보여준다 */}
+                <TouchableOpacity style={s.memoCard} onPress={copyMemo} activeOpacity={0.8}>
+                  <View style={s.memoHead}>
+                    <Text style={s.memoLabel}>출입 정보</Text>
+                    <Icon name="content-copy" size={18} color={c.textSub} />
+                  </View>
+                  <Text style={s.memoValue}>{building.memo || '없음'}</Text>
+                  {!!building.memo2 && (
+                    <>
+                      <Text style={[s.memoLabel, { marginTop: 12 }]}>백업</Text>
+                      <Text style={s.memoBackup}>{building.memo2}</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+
+                {!!building.shortcut && (
+                  <View style={s.infoBox}>
+                    <Text style={s.infoLabel}>샛길 정보</Text>
+                    <Text style={s.infoValue}>{building.shortcut}</Text>
+                  </View>
+                )}
+                {!!building.note && (
+                  <View style={s.infoBox}>
+                    <Text style={s.infoLabel}>특이사항</Text>
+                    <Text style={s.infoValue}>{building.note}</Text>
+                  </View>
+                )}
+                {building.location && (
+                  <View style={s.infoBox}>
+                    <Text style={s.infoLabel}>위치</Text>
+                    <Text style={s.infoValue}>
+                      {building.location.lat?.toFixed(6)}, {building.location.lng?.toFixed(6)}
+                    </Text>
+                  </View>
+                )}
+
+                {/* 사진 */}
+                {building.images?.length > 0 && (
+                  <View style={s.imageSection}>
+                    <Text style={s.infoLabel}>사진 · 배치도 ({building.images.length})</Text>
+                    {building.images.map((img, i) => (
+                      <TouchableOpacity
+                        key={i}
+                        activeOpacity={0.85}
+                        onPress={() => { setViewerIndex(i); setViewerOpen(true); }}
+                      >
+                        <Image source={{ uri: img }} style={s.image} resizeMode="contain" />
+                        <View style={s.imageBadge}>
+                          <Icon name="magnify-plus-outline" size={14} color="#fff" />
+                          <Text style={s.imageBadgeText}>크게 보기</Text>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+
+                {isMine && (
+                  <View style={s.noteBox}>
+                    <Text style={s.noteText}>
+                      사진은 공용 건물에만 등록됩니다.{'\n'}
+                      다른 라이더에게도 도움이 될 정보라면 제보하기로 보내주세요.
+                    </Text>
+                  </View>
+                )}
+
+                {/* 버튼들 */}
+                <View style={s.btnRow}>
+                  <TouchableOpacity style={s.btnSub} onPress={handleShare}>
+                    <Icon name="share-variant-outline" size={18} color={c.accent} />
+                    <Text style={s.btnSubText}>공유</Text>
+                  </TouchableOpacity>
+                  {(isMine || isAdmin) && (
+                    <TouchableOpacity style={s.btnSub} onPress={() => setEditMode(true)}>
+                      <Icon name="pencil-outline" size={18} color={c.accent} />
+                      <Text style={s.btnSubText}>수정</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {!isMine && !isAdmin && (
+                  <TouchableOpacity style={s.btnPrimary} onPress={() => setEditMode(true)}>
+                    <Text style={s.btnPrimaryText}>내 출입정보 입력</Text>
+                  </TouchableOpacity>
+                )}
+
+                {isMine && isAdmin && (
+                  <TouchableOpacity style={s.btnPromote} onPress={handlePromote} disabled={saving}>
+                    <Icon name="web" size={18} color={c.warn} />
+                    <Text style={s.btnPromoteText}>공용으로 올리기</Text>
+                  </TouchableOpacity>
+                )}
+
+                {(isMine || isAdmin) && (
+                  <TouchableOpacity style={s.btnDelete} onPress={handleDelete}>
+                    <Text style={s.btnDeleteText}>삭제</Text>
+                  </TouchableOpacity>
+                )}
+
+                {!!saveMsg && <Text style={s.savedMsg}>{saveMsg}</Text>}
               </>
             )}
-          </View>
-          <View style={styles.infoBox}>
-            <Text style={styles.infoLabel}>특이사항</Text>
-            <Text style={styles.infoValue}>{building.note || '없음'}</Text>
-          </View>
-          <View style={styles.infoBox}>
-            <Text style={styles.infoLabel}>샛길 정보</Text>
-            <Text style={styles.infoValue}>{building.shortcut || '없음'}</Text>
-          </View>
-          {building.location && (
-            <View style={styles.infoBox}>
-              <Text style={styles.infoLabel}>위치 정보</Text>
-              <Text style={styles.infoValue}>
-                위도: {building.location.lat?.toFixed(6)}{'\n'}경도: {building.location.lng?.toFixed(6)}
-              </Text>
-            </View>
-          )}
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </View>
 
-          {/* 이미지 — 잘리지 않게 전체를 보여주고, 누르면 확대 가능한 전체보기 */}
-          {building.images?.length > 0 && (
-            <View style={styles.imageSection}>
-              <Text style={styles.infoLabel}>사진 · 배치도 ({building.images.length})</Text>
-              {building.images.map((img, i) => (
-                <TouchableOpacity
-                  key={i}
-                  activeOpacity={0.85}
-                  onPress={() => { setViewerIndex(i); setViewerOpen(true); }}
-                >
-                  <Image source={{ uri: img }} style={styles.image} resizeMode="contain" />
-                  <View style={styles.imageBadge}>
-                    <Text style={styles.imageBadgeText}>🔍 크게 보기</Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-
-          {/* 개인 건물에는 사진을 두지 않는 이유를 알려준다 */}
-          {isMine && (
-            <View style={styles.photoNote}>
-              <Text style={styles.photoNoteText}>
-                사진은 공용 건물에만 등록됩니다.{'\n'}
-                다른 라이더에게도 도움이 될 정보라면 제보하기로 보내주세요.
-              </Text>
-            </View>
-          )}
-
-          <TouchableOpacity style={styles.btnShare} onPress={handleShare}>
-            <Text style={styles.btnShareText}>공유</Text>
-          </TouchableOpacity>
-
-          {/* 어드민이 아니어도 공용 건물에 내 메모는 붙일 수 있다 */}
-          {!isMine && !isAdmin && (
-            <TouchableOpacity style={styles.btnEdit} onPress={() => setEditMode(true)}>
-              <Text style={styles.btnEditText}>내 출입정보 입력</Text>
-            </TouchableOpacity>
-          )}
-
-          {/* 내 건물을 공용으로 올리기 — 어드민만 */}
-          {isMine && isAdmin && (
-            <TouchableOpacity style={styles.btnPromote} onPress={handlePromote} disabled={saving}>
-              <Text style={styles.btnPromoteText}>🌐 공용으로 올리기</Text>
-            </TouchableOpacity>
-          )}
-
-          {/* 내 건물이면 누구나, 공용 건물이면 어드민만 */}
-          {(isMine || isAdmin) && (
-            <View style={styles.btnRow}>
-              <TouchableOpacity style={styles.btnEdit} onPress={() => setEditMode(true)}>
-                <Text style={styles.btnEditText}>수정</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.btnDelete} onPress={handleDelete}>
-                <Text style={styles.btnDeleteText}>삭제</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </>
-      )}
-
-      <TouchableOpacity style={styles.btnBack} onPress={() => navigation.goBack()}>
-        <Text style={styles.btnBackText}>← 뒤로</Text>
-      </TouchableOpacity>
-
-    </ScrollView>
-    </KeyboardAvoidingView>
-
-    {/* Modal은 ScrollView 밖에 둬야 터치(핀치)를 뺏기지 않는다 */}
-    <ImageViewer
-      visible={viewerOpen}
-      images={building.images || []}
-      startIndex={viewerIndex}
-      onClose={() => setViewerOpen(false)}
-    />
-    </View>
+      {/* Modal은 ScrollView 밖에 둬야 터치(핀치)를 뺏기지 않는다 */}
+      <ImageViewer
+        visible={viewerOpen}
+        images={building.images || []}
+        startIndex={viewerIndex}
+        onClose={() => setViewerOpen(false)}
+      />
+    </>
   );
 }
 
@@ -726,93 +754,141 @@ const viewerStyles = StyleSheet.create({
   closeText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
 });
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc', padding: 16 },
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  title: { fontSize: 22, fontWeight: 'bold', textAlign: 'center', color: '#1e3a5f', marginBottom: 16 },
-  saveMsg: { backgroundColor: '#dcfce7', padding: 10, borderRadius: 8, marginBottom: 12 },
-  saveMsgText: { color: '#166534', textAlign: 'center' },
-  label: { fontSize: 14, fontWeight: 'bold', color: '#374151', marginBottom: 4, marginTop: 12 },
-  input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, padding: 12, fontSize: 16, color: '#1e293b' },
-  inputMulti: { minHeight: 80, textAlignVertical: 'top' },
-  infoBox: { backgroundColor: '#fff', borderRadius: 8, padding: 14, marginBottom: 8, elevation: 1 },
-  infoLabel: { fontSize: 12, color: '#94a3b8', marginBottom: 4 },
-  infoValue: { fontSize: 17, color: '#1e293b', fontWeight: '500' },
+const makeStyles = (c, font, space, radius, TAP) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: c.bg },
 
-  imageSection: { backgroundColor: '#fff', borderRadius: 8, padding: 14, marginBottom: 8, elevation: 1 },
+  header: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: space.sm, paddingBottom: space.sm,
+  },
+  iconBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  headerMid: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
+  headerScope: { ...font.sub, color: c.textSub },
+
+  name: { ...font.title, color: c.text, marginBottom: space.lg },
+
+  // 출입 정보 — 라이더가 제일 급하게 보는 것이라 가장 크게
+  memoCard: {
+    backgroundColor: c.surface, borderRadius: radius.lg,
+    padding: space.lg, marginBottom: space.md,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: c.lineStrong,
+  },
+  memoHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  memoLabel: { ...font.sub, color: c.textMuted },
+  memoValue: {
+    fontSize: 30, fontWeight: '500', color: c.text, marginTop: 6,
+    fontFamily: Platform.OS === 'android' ? 'monospace' : 'Menlo',
+  },
+  memoBackup: {
+    fontSize: 20, fontWeight: '400', color: c.warn, marginTop: 4,
+    fontFamily: Platform.OS === 'android' ? 'monospace' : 'Menlo',
+  },
+
+  infoBox: {
+    backgroundColor: c.surface, borderRadius: radius.md,
+    padding: space.md + 2, marginBottom: space.sm,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: c.line,
+  },
+  infoLabel: { ...font.sub, color: c.textMuted, marginBottom: 4 },
+  infoValue: { ...font.body, color: c.text, lineHeight: 22 },
+
+  imageSection: { marginTop: space.md },
   image: {
-    width: '100%', height: 320, borderRadius: 8, marginTop: 8,
-    backgroundColor: '#f1f5f9',
+    width: '100%', height: 260, borderRadius: radius.md,
+    backgroundColor: c.surfaceSoft, marginTop: space.sm,
   },
   imageBadge: {
-    position: 'absolute', right: 10, bottom: 10,
-    backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 10, paddingVertical: 5,
-    borderRadius: 6,
+    position: 'absolute', right: space.sm, bottom: space.sm,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    paddingHorizontal: space.sm + 2, paddingVertical: 5, borderRadius: radius.pill,
   },
-  imageBadgeText: { color: '#fff', fontSize: 12 },
+  imageBadgeText: { color: '#fff', ...font.tiny },
 
-  btnLocation: { backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#bfdbfe', padding: 14, borderRadius: 8, alignItems: 'center', marginTop: 16 },
-  btnLocationText: { color: '#2563eb', fontWeight: 'bold', fontSize: 15 },
-  coordText: { fontSize: 13, color: '#475569', marginTop: 8 },
-  locChangedBox: { backgroundColor: '#f1f5f9', padding: 10, borderRadius: 8, marginTop: 8 },
-  locChangedText: { fontSize: 13, color: '#64748b' },
-  btnRow: { flexDirection: 'row', gap: 12, marginTop: 16 },
-  btnSave: { flex: 1, backgroundColor: '#3b82f6', padding: 14, borderRadius: 8, alignItems: 'center' },
-  btnSaveText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-  btnCancel: { flex: 1, backgroundColor: '#e2e8f0', padding: 14, borderRadius: 8, alignItems: 'center' },
-  btnCancelText: { color: '#374151', fontWeight: 'bold', fontSize: 16 },
-  btnShare: { backgroundColor: '#e2e8f0', padding: 14, borderRadius: 8, alignItems: 'center', marginTop: 16 },
-  btnShareText: { color: '#374151', fontWeight: 'bold', fontSize: 16 },
-  btnEdit: { flex: 1, backgroundColor: '#e2e8f0', padding: 14, borderRadius: 8, alignItems: 'center' },
-  btnEditText: { color: '#374151', fontWeight: 'bold' },
-  btnDelete: { flex: 1, backgroundColor: '#fee2e2', padding: 14, borderRadius: 8, alignItems: 'center' },
-  btnDeleteText: { color: '#dc2626', fontWeight: 'bold' },
-  btnBack: { backgroundColor: '#f1f5f9', padding: 14, borderRadius: 8, alignItems: 'center', marginTop: 16, marginBottom: 40 },
-  btnBackText: { color: '#475569', fontSize: 15 },
+  label: { ...font.sub, color: c.textSub, marginTop: space.lg, marginBottom: 6 },
+  input: {
+    backgroundColor: c.surface, borderWidth: StyleSheet.hairlineWidth,
+    borderColor: c.lineStrong, borderRadius: radius.md,
+    paddingHorizontal: space.md, paddingVertical: space.md,
+    ...font.body, color: c.text,
+  },
+  inputMono: { fontFamily: Platform.OS === 'android' ? 'monospace' : 'Menlo', fontSize: 18 },
+  inputMulti: { minHeight: 84, textAlignVertical: 'top' },
 
-  scopeBadge: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 14 },
-  scopeMine: { backgroundColor: '#ccfbf1' },
-  scopePublic: { backgroundColor: '#fef3c7' },
-  scopeBadgeText: { fontSize: 13, fontWeight: 'bold', color: '#334155' },
-
-  photoBox: { marginTop: 16 },
-  photoRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
-  photoThumb: { width: 64, height: 64, borderRadius: 8, backgroundColor: '#e2e8f0' },
+  photoRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginBottom: space.sm },
+  photoThumb: { width: 64, height: 64, borderRadius: radius.sm, backgroundColor: c.surfaceSoft },
   photoThumbOff: { opacity: 0.3 },
-  photoNewTag: { backgroundColor: '#dcfce7', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
-  photoNewTagText: { color: '#15803d', fontSize: 11, fontWeight: 'bold' },
+  newTag: {
+    backgroundColor: c.accentSoft, paddingHorizontal: space.sm, paddingVertical: 3,
+    borderRadius: radius.pill,
+  },
+  newTagText: { ...font.tiny, fontWeight: '500', color: c.accent },
   photoDel: {
-    marginLeft: 'auto', backgroundColor: '#fee2e2',
-    paddingHorizontal: 12, minHeight: 40, justifyContent: 'center', borderRadius: 8,
+    marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: c.dangerSoft, paddingHorizontal: space.md,
+    minHeight: 40, justifyContent: 'center', borderRadius: radius.sm,
   },
-  photoDelText: { color: '#dc2626', fontSize: 13, fontWeight: 'bold' },
+  photoDelText: { ...font.sub, fontWeight: '500', color: c.danger },
   photoUndo: {
-    marginLeft: 'auto', backgroundColor: '#f1f5f9',
-    paddingHorizontal: 12, minHeight: 40, justifyContent: 'center', borderRadius: 8,
+    marginLeft: 'auto', backgroundColor: c.surfaceSoft,
+    paddingHorizontal: space.md, minHeight: 40, justifyContent: 'center', borderRadius: radius.sm,
   },
-  photoUndoText: { color: '#475569', fontSize: 13, fontWeight: 'bold' },
-  photoBtnRow: { flexDirection: 'row', gap: 10, marginTop: 6 },
-  photoBtn: {
-    flex: 1, minHeight: 48, justifyContent: 'center', alignItems: 'center',
-    backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#bfdbfe', borderRadius: 8,
+  photoUndoText: { ...font.sub, fontWeight: '500', color: c.textSub },
+
+  locBox: {
+    backgroundColor: c.surface, borderWidth: StyleSheet.hairlineWidth,
+    borderColor: c.lineStrong, borderRadius: radius.md, padding: space.md,
   },
-  photoBtnText: { color: '#2563eb', fontWeight: 'bold', fontSize: 15 },
-  photoNote: { marginTop: 16, backgroundColor: '#f1f5f9', borderRadius: 8, padding: 14 },
-  photoNoteText: { color: '#64748b', fontSize: 13, lineHeight: 20 },
+  locOk: { ...font.sub, color: c.accent, fontWeight: '500', marginBottom: space.sm },
+  locNone: { ...font.sub, color: c.warn, lineHeight: 19, marginBottom: space.sm },
 
-  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 14 },
-  favStar: {
-    width: 44, height: 34, borderRadius: 10, justifyContent: 'center', alignItems: 'center',
-    backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#cbd5e1',
+  warnBox: {
+    backgroundColor: c.dangerSoft, borderWidth: StyleSheet.hairlineWidth,
+    borderColor: c.danger, borderRadius: radius.md, padding: space.md,
   },
-  favStarOn: { backgroundColor: '#fef9c3', borderColor: '#facc15' },
-  favStarText: { fontSize: 19, color: '#a16207' },
+  warnText: { ...font.sub, color: c.danger, lineHeight: 20 },
+  noteBox: {
+    backgroundColor: c.accentSoft, borderRadius: radius.md,
+    padding: space.md, marginTop: space.md,
+  },
+  noteText: { ...font.sub, color: c.accent, lineHeight: 20 },
 
-  btnPromote: { backgroundColor: '#fffbeb', borderWidth: 1, borderColor: '#fbbf24', padding: 14, borderRadius: 8, alignItems: 'center', marginTop: 16 },
-  btnPromoteText: { color: '#b45309', fontWeight: 'bold', fontSize: 15 },
+  btnRow: { flexDirection: 'row', gap: space.sm, marginTop: space.md },
+  btnSub: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    minHeight: TAP, borderRadius: radius.md,
+    backgroundColor: c.surface,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: c.lineStrong,
+  },
+  btnSubText: { ...font.body, fontWeight: '500', color: c.accent },
 
-  editWarn: { backgroundColor: '#fef2f2', borderWidth: 1, borderColor: '#fca5a5', borderRadius: 8, padding: 12, marginBottom: 8 },
-  editWarnText: { color: '#b91c1c', fontSize: 13, lineHeight: 19 },
-  editNote: { backgroundColor: '#ecfdf5', borderWidth: 1, borderColor: '#6ee7b7', borderRadius: 8, padding: 12, marginBottom: 8 },
-  editNoteText: { color: '#065f46', fontSize: 13, lineHeight: 19 },
+  btnPrimary: {
+    minHeight: TAP + 4, justifyContent: 'center', alignItems: 'center',
+    backgroundColor: c.accent, borderRadius: radius.md, marginTop: space.lg,
+  },
+  btnOff: { opacity: 0.7 },
+  btnPrimaryText: { ...font.body, fontWeight: '500', color: c.onAccent },
+  savingRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+
+  btnPlain: {
+    minHeight: TAP, justifyContent: 'center', alignItems: 'center',
+    backgroundColor: c.surfaceSoft, borderRadius: radius.md, marginTop: space.sm,
+  },
+  btnPlainText: { ...font.body, color: c.textSub },
+
+  btnPromote: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    minHeight: TAP, borderRadius: radius.md, marginTop: space.md,
+    backgroundColor: c.warnSoft,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: c.warn,
+  },
+  btnPromoteText: { ...font.body, fontWeight: '500', color: c.warn },
+
+  btnDelete: {
+    minHeight: TAP, justifyContent: 'center', alignItems: 'center',
+    borderRadius: radius.md, marginTop: space.xl,
+  },
+  btnDeleteText: { ...font.sub, color: c.danger },
+
+  savedMsg: { ...font.sub, color: c.accent, textAlign: 'center', marginTop: space.md },
 });

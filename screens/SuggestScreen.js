@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView, Image,
   StyleSheet, Alert, ActivityIndicator, KeyboardAvoidingView, Platform
 } from 'react-native';
+import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '../theme';
 import * as Location from 'expo-location';
 import { SUGGEST_TYPES, saveSuggestion } from '../suggestionsDB';
 import { pickImages, takePhoto, uploadSuggestionImages } from '../imageUpload';
@@ -12,6 +14,8 @@ const MAX_PHOTOS = 3;
 
 export default function SuggestScreen({ navigation, route }) {
   const insets = useSafeAreaInsets();
+  const { c, font, space, radius, TAP } = useTheme();
+  const s = useMemo(() => makeStyles(c, font, space, radius, TAP), [c]);
 
   // 건물 상세에서 넘어온 경우 이름이 미리 채워진다
   const [type, setType] = useState(route.params?.type || 'new');
@@ -98,172 +102,200 @@ export default function SuggestScreen({ navigation, route }) {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1, backgroundColor: c.bg }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
+      <View style={[s.header, { paddingTop: insets.top + space.sm }]}>
+        <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}>
+          <Icon name="arrow-left" size={24} color={c.textSub} />
+        </TouchableOpacity>
+        <Text style={s.screenTitle}>제보하기</Text>
+      </View>
       <ScrollView
-        style={styles.container}
+        style={s.container}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: insets.bottom + 60 }}
       >
-        <Text style={styles.title}>제보하기</Text>
-        <Text style={styles.lead}>
+        <Text style={s.lead}>
           도움이 될 정보를 알려주시면 확인 후 반영하겠습니다.
         </Text>
 
         {/* 종류 */}
-        <Text style={styles.label}>어떤 내용인가요?</Text>
-        <View style={styles.typeGrid}>
+        <Text style={s.label}>어떤 내용인가요?</Text>
+        <View style={s.typeGrid}>
           {SUGGEST_TYPES.map(t => (
             <TouchableOpacity
               key={t.key}
-              style={[styles.typeBtn, type === t.key && styles.typeBtnOn]}
+              style={[s.typeBtn, type === t.key && s.typeBtnOn]}
               onPress={() => setType(t.key)}
             >
-              <Text style={[styles.typeBtnText, type === t.key && styles.typeBtnTextOn]}>
+              <Text style={[s.typeBtnText, type === t.key && s.typeBtnTextOn]}>
                 {t.label}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
-        {current?.hint ? <Text style={styles.hint}>{current.hint}</Text> : null}
+        {current?.hint ? <Text style={s.hint}>{current.hint}</Text> : null}
 
         {/* 건물 이름 */}
-        <Text style={styles.label}>건물 이름 (선택)</Text>
+        <Text style={s.label}>건물 이름 (선택)</Text>
         <TextInput
-          style={styles.input}
+          style={s.input}
           value={buildingName}
           onChangeText={setBuildingName}
           placeholder="예: 동탄 자연앤데시앙 871동"
-          placeholderTextColor="#94a3b8"
+          placeholderTextColor={c.textFaint}
         />
 
         {/* 내용 */}
-        <Text style={styles.label}>내용 *</Text>
+        <Text style={s.label}>내용 *</Text>
         <TextInput
-          style={[styles.input, styles.inputMulti]}
+          style={[s.input, s.inputMulti]}
           value={text}
           onChangeText={setText}
           multiline
           numberOfLines={5}
           placeholder={'예) 12층은 호수 배치가 다릅니다.\n1201호가 엘리베이터 왼쪽이에요.'}
-          placeholderTextColor="#94a3b8"
+          placeholderTextColor={c.textFaint}
         />
 
         {/* 사진 */}
-        <Text style={styles.label}>사진 ({photos.length}/{MAX_PHOTOS})</Text>
-        <Text style={styles.hint}>
+        <Text style={s.label}>사진 ({photos.length}/{MAX_PHOTOS})</Text>
+        <Text style={s.hint}>
           현장 사진도 좋고, 지도를 캡처해서 넣어도 됩니다.
         </Text>
 
         {photos.map((uri, i) => (
-          <View key={i} style={styles.photoRow}>
-            <Image source={{ uri }} style={styles.photoThumb} />
-            <TouchableOpacity style={styles.photoDel} onPress={() => dropPhoto(i)}>
-              <Text style={styles.photoDelText}>✕ 빼기</Text>
+          <View key={i} style={s.photoRow}>
+            <Image source={{ uri }} style={s.photoThumb} />
+            <TouchableOpacity style={s.photoDel} onPress={() => dropPhoto(i)}>
+              <Icon name="close" size={16} color={c.danger} />
+              <Text style={s.photoDelText}>빼기</Text>
             </TouchableOpacity>
           </View>
         ))}
 
         {photos.length < MAX_PHOTOS && (
-          <View style={styles.btnRow}>
-            <TouchableOpacity style={styles.subBtn} onPress={() => addPhotos(true)}>
-              <Text style={styles.subBtnText}>📷 찍기</Text>
+          <View style={s.btnRow}>
+            <TouchableOpacity style={s.subBtn} onPress={() => addPhotos(true)}>
+              <Icon name="camera-outline" size={18} color={c.accent} />
+              <Text style={s.subBtnText}>찍기</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.subBtn} onPress={() => addPhotos(false)}>
-              <Text style={styles.subBtnText}>🖼 앨범에서</Text>
+            <TouchableOpacity style={s.subBtn} onPress={() => addPhotos(false)}>
+              <Icon name="image-outline" size={18} color={c.accent} />
+              <Text style={s.subBtnText}>앨범에서</Text>
             </TouchableOpacity>
           </View>
         )}
 
         {/* 위치 */}
-        <Text style={styles.label}>위치 (선택)</Text>
-        <View style={styles.locBox}>
+        <Text style={s.label}>위치 (선택)</Text>
+        <View style={s.locBox}>
           {location ? (
-            <Text style={styles.locOk}>
-              📍 {location.lat.toFixed(6)}, {location.lng.toFixed(6)}
+            <Text style={s.locOk}>
+              {location.lat.toFixed(6)}, {location.lng.toFixed(6)}
             </Text>
           ) : (
-            <Text style={styles.hint}>
+            <Text style={s.hint}>
               위치를 넣어주시면 어디인지 훨씬 빨리 찾을 수 있습니다.
             </Text>
           )}
-          <TouchableOpacity style={styles.subBtn} onPress={useCurrentLocation} disabled={locBusy}>
+          <TouchableOpacity style={s.subBtn} onPress={useCurrentLocation} disabled={locBusy}>
             {locBusy
-              ? <ActivityIndicator color="#2563eb" />
-              : <Text style={styles.subBtnText}>📍 지금 여기</Text>}
+              ? <ActivityIndicator color={c.accent} />
+              : <>
+                  <Icon name="crosshairs-gps" size={18} color={c.accent} />
+                  <Text style={s.subBtnText}>지금 여기</Text>
+                </>}
           </TouchableOpacity>
         </View>
 
         {/* 보내기 */}
         <TouchableOpacity
-          style={[styles.sendBtn, sending && styles.sendBtnOff]}
+          style={[s.sendBtn, sending && s.sendBtnOff]}
           onPress={handleSend}
           disabled={sending}
         >
           {sending
-            ? <View style={styles.sendingRow}>
-                <ActivityIndicator color="#fff" />
-                <Text style={styles.sendBtnText}>{progress || '보내는 중...'}</Text>
+            ? <View style={s.sendingRow}>
+                <ActivityIndicator color={c.onAccent} />
+                <Text style={s.sendBtnText}>{progress || '보내는 중...'}</Text>
               </View>
-            : <Text style={styles.sendBtnText}>제보 보내기</Text>}
+            : <Text style={s.sendBtnText}>제보 보내기</Text>}
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.cancelBtn} onPress={() => navigation.goBack()}>
-          <Text style={styles.cancelBtnText}>취소</Text>
+        <TouchableOpacity style={s.cancelBtn} onPress={() => navigation.goBack()}>
+          <Text style={s.cancelBtnText}>취소</Text>
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc', padding: 16 },
-  title: { fontSize: 24, fontWeight: 'bold', color: '#1e3a5f' },
-  lead: { fontSize: 13, color: '#64748b', marginTop: 6, lineHeight: 19 },
-  label: { fontSize: 15, fontWeight: 'bold', color: '#374151', marginBottom: 6, marginTop: 18 },
-  hint: { fontSize: 12, color: '#94a3b8', lineHeight: 18, marginBottom: 6 },
+const makeStyles = (c, font, space, radius, TAP) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.bg, paddingHorizontal: space.lg },
+  header: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: space.sm, paddingBottom: space.sm,
+    backgroundColor: c.bg,
+  },
+  backBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  screenTitle: { ...font.title, color: c.text, marginLeft: space.xs },
+
+  lead: { ...font.sub, color: c.textMuted, lineHeight: 20, marginTop: space.xs },
+  label: { ...font.sub, color: c.textSub, marginBottom: 6, marginTop: space.xl },
+  hint: { ...font.tiny, color: c.textFaint, lineHeight: 18, marginBottom: 6 },
+
   input: {
-    backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1',
-    borderRadius: 8, padding: 12, fontSize: 16, color: '#1e293b',
+    backgroundColor: c.surface, borderWidth: StyleSheet.hairlineWidth,
+    borderColor: c.lineStrong, borderRadius: radius.md,
+    paddingHorizontal: space.md, paddingVertical: space.md,
+    ...font.body, color: c.text,
   },
   inputMulti: { minHeight: 120, textAlignVertical: 'top' },
-  typeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+
+  typeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   typeBtn: {
-    paddingHorizontal: 14, minHeight: 44, justifyContent: 'center',
-    backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8,
+    paddingHorizontal: space.lg, minHeight: 44, justifyContent: 'center',
+    backgroundColor: c.surface, borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: c.lineStrong,
   },
-  typeBtnOn: { backgroundColor: '#1e3a5f', borderColor: '#1e3a5f' },
-  typeBtnText: { fontSize: 14, color: '#475569', fontWeight: 'bold' },
-  typeBtnTextOn: { color: '#fff' },
-  photoRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
-  photoThumb: { width: 64, height: 64, borderRadius: 8, backgroundColor: '#e2e8f0' },
+  typeBtnOn: { backgroundColor: c.accent, borderColor: c.accent },
+  typeBtnText: { ...font.sub, fontWeight: '500', color: c.textSub },
+  typeBtnTextOn: { color: c.onAccent },
+
+  photoRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginBottom: space.sm },
+  photoThumb: { width: 64, height: 64, borderRadius: radius.sm, backgroundColor: c.surfaceSoft },
   photoDel: {
-    marginLeft: 'auto', backgroundColor: '#fee2e2',
-    paddingHorizontal: 12, minHeight: 40, justifyContent: 'center', borderRadius: 8,
+    marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: c.dangerSoft, paddingHorizontal: space.md,
+    minHeight: 40, justifyContent: 'center', borderRadius: radius.sm,
   },
-  photoDelText: { color: '#dc2626', fontSize: 13, fontWeight: 'bold' },
-  btnRow: { flexDirection: 'row', gap: 10, marginTop: 6 },
+  photoDelText: { ...font.sub, fontWeight: '500', color: c.danger },
+
+  btnRow: { flexDirection: 'row', gap: space.sm, marginTop: space.sm },
   subBtn: {
-    flex: 1, minHeight: 48, justifyContent: 'center', alignItems: 'center',
-    backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#bfdbfe', borderRadius: 8,
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    minHeight: TAP, borderRadius: radius.md, backgroundColor: c.accentSoft,
   },
-  subBtnText: { color: '#2563eb', fontWeight: 'bold', fontSize: 14 },
+  subBtnText: { ...font.sub, fontWeight: '500', color: c.accent },
+
   locBox: {
-    backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1',
-    borderRadius: 8, padding: 12,
+    backgroundColor: c.surface, borderWidth: StyleSheet.hairlineWidth,
+    borderColor: c.lineStrong, borderRadius: radius.md, padding: space.md,
   },
-  locOk: { fontSize: 13, color: '#0f766e', fontWeight: 'bold', marginBottom: 10 },
+  locOk: { ...font.sub, fontWeight: '500', color: c.accent, marginBottom: space.sm },
+
   sendBtn: {
-    backgroundColor: '#3b82f6', minHeight: 52, justifyContent: 'center',
-    alignItems: 'center', borderRadius: 8, marginTop: 28,
+    minHeight: TAP + 6, justifyContent: 'center', alignItems: 'center',
+    backgroundColor: c.accent, borderRadius: radius.md, marginTop: space.xxl,
   },
-  sendBtnOff: { backgroundColor: '#93c5fd' },
-  sendingRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  sendBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  sendBtnOff: { opacity: 0.7 },
+  sendingRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  sendBtnText: { ...font.head, color: c.onAccent },
   cancelBtn: {
-    backgroundColor: '#e2e8f0', minHeight: 48, justifyContent: 'center',
-    alignItems: 'center', borderRadius: 8, marginTop: 10,
+    minHeight: TAP, justifyContent: 'center', alignItems: 'center',
+    backgroundColor: c.surfaceSoft, borderRadius: radius.md, marginTop: space.sm,
   },
-  cancelBtnText: { color: '#374151', fontWeight: 'bold', fontSize: 15 },
+  cancelBtnText: { ...font.body, color: c.textSub },
 });

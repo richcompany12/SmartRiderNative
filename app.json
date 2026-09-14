@@ -1,36 +1,36 @@
 {
-  "expo": {
-    "name": "SmartRiderNative3",
+   "expo": {
+    "name": "스마트라이더",
     "slug": "SmartRiderNative3",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "newArchEnabled": false,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#075B4B"
     },
     "ios": {
       "supportsTablet": true
     },
-"android": {
-  "adaptiveIcon": {
-    "foregroundImage": "./assets/adaptive-icon.png",
-    "backgroundColor": "#ffffff"
-  },
-  "edgeToEdgeEnabled": true,
-  "package": "com.richcompany.smartridernative3",
-  "usesCleartextTraffic": true,
-  "permissions": [
-    "ACCESS_FINE_LOCATION",
-    "ACCESS_COARSE_LOCATION",
-    "ACCESS_BACKGROUND_LOCATION",
-    "FOREGROUND_SERVICE",
-    "FOREGROUND_SERVICE_LOCATION"
-  ]
-},
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#075B4B"
+      },
+      "edgeToEdgeEnabled": true,
+      "package": "com.richcompany.smartridernative3",
+      "usesCleartextTraffic": true,
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION"
+      ]
+    },
     "web": {
       "favicon": "./assets/favicon.png"
     },

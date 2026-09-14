@@ -104,6 +104,13 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+            release {
+            storeFile file(SMARTRIDER_STORE_FILE)
+            storePassword SMARTRIDER_STORE_PASSWORD
+            keyAlias SMARTRIDER_KEY_ALIAS
+            keyPassword SMARTRIDER_KEY_PASSWORD
+        }
+    
     }
     buildTypes {
         debug {
@@ -112,7 +119,7 @@ android {
         release {
             // Caution! In production, you need to generate your own keystore file.
             // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+             signingConfig signingConfigs.release
             def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
             shrinkResources enableShrinkResources.toBoolean()
             minifyEnabled enableMinifyInReleaseBuilds

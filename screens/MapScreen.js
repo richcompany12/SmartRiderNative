@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { View, StyleSheet, TouchableOpacity, Text, Alert } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
+import { useTheme } from '../theme';
 import * as Location from 'expo-location';
 import { getAllAlertPoints } from '../firebaseDB';
 import { getCachedBuildings } from '../buildingsCache';
@@ -190,38 +192,39 @@ export default function MapScreen({ navigation }) {
     body { width: 100vw; height: 100vh; overflow: hidden; }
     #map { width: 100%; height: 100%; }
     .overlay {
-      background: #fff; border-radius: 10px; padding: 10px 14px;
+      background: #fff; border-radius: 10px;
+      /* 오른쪽 여백을 넉넉히 둬서 닫기 버튼과 글자가 겹치지 않게 한다 */
+      padding: 11px 38px 11px 14px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.2);
       font-family: sans-serif; position: relative;
-      border-left: 4px solid #3b82f6;
-      /* ★ max-width 대신 고정 폭.
-         max-width는 내용이 길면 브라우저가 늘려버리는 경우가 있다. */
-      width: 240px; box-sizing: border-box; overflow: hidden;
+      border-left: 4px solid #185FA5;
+      width: 250px; box-sizing: border-box;
     }
-    .overlay-head { display: flex; align-items: flex-start; width: 100%; }
-    /* ★ min-width:0 이 핵심.
-       flex 항목은 기본값이 min-width:auto 라서 내용보다 작아지기를 거부한다.
-       그래서 글자가 상자 밖으로 삐져나왔다. */
+    .overlay-head { width: 100%; }
+    /* flex를 쓰지 않는다. flex 항목은 내용보다 작아지길 거부해서
+       긴 이름이 상자를 밀어내고 잘려 보였다. 그냥 블록이면 알아서 줄바꿈된다. */
     .overlay-name {
-      flex: 1 1 auto; min-width: 0;
-      font-weight: bold; font-size: 13px; color: #1e3a5f;
-      word-break: break-all; overflow-wrap: anywhere;
+      font-weight: bold; font-size: 14px; color: #1A1A18;
+      overflow-wrap: anywhere; word-break: break-word; line-height: 1.35;
     }
     .overlay-memo {
-      margin-top: 5px; font-size: 12px; color: #374151; background: #f0f4ff;
-      padding: 4px 6px; border-radius: 6px; font-family: monospace;
-      word-break: break-all; overflow-wrap: anywhere;
-      max-width: 100%; box-sizing: border-box;
+      margin-top: 6px; font-size: 15px; color: #1A1A18; background: #F3F2ED;
+      padding: 6px 8px; border-radius: 6px; font-family: monospace;
+      overflow-wrap: anywhere; word-break: break-word;
     }
-    .overlay-mine { border-left-color: #0d9488; }
+    .overlay-mine { border-left-color: #075B4B; }
     .overlay-scope { font-size: 10px; font-weight: bold; margin-bottom: 3px; }
-    .overlay-scope-mine { color: #0d9488; }
-    .overlay-scope-public { color: #b45309; }
-    .overlay-memo2 { margin-top: 4px; background: #fff7ed; color: #9a3412; }
+    .overlay-scope-mine { color: #075B4B; }
+    .overlay-scope-public { color: #185FA5; }
+    .overlay-memo2 { margin-top: 4px; background: #FEF6E7; color: #B45309; }
     .overlay-alert { border-left-color: #dc2626; }
     .overlay-type { font-size: 12px; font-weight: bold; color: #b91c1c; margin-bottom: 4px; }
     .overlay-hint { font-size: 10px; color: #9ca3af; margin-top: 6px; text-align: center; }
-    .overlay-close { flex: 0 0 auto; margin-left: 8px; cursor: pointer; font-size: 18px; line-height: 15px; color: #9ca3af; }
+    .overlay-close {
+      position: absolute; top: 4px; right: 4px;
+      width: 30px; height: 30px; line-height: 30px; text-align: center;
+      cursor: pointer; font-size: 19px; color: #9ca3af;
+    }
   </style>
 </head>
 <body>
@@ -256,8 +259,8 @@ export default function MapScreen({ navigation }) {
     var PIN_MINE = null, PIN_PUBLIC = null;
     function pinImage(isMine) {
       if (!PIN_MINE) {
-        PIN_MINE = new kakao.maps.MarkerImage(makePin('#0d9488'), new kakao.maps.Size(26, 36));
-        PIN_PUBLIC = new kakao.maps.MarkerImage(makePin('#2563eb'), new kakao.maps.Size(26, 36));
+        PIN_MINE = new kakao.maps.MarkerImage(makePin('#075B4B'), new kakao.maps.Size(26, 36));
+        PIN_PUBLIC = new kakao.maps.MarkerImage(makePin('#185FA5'), new kakao.maps.Size(26, 36));
       }
       return isMine ? PIN_MINE : PIN_PUBLIC;
     }
@@ -419,11 +422,11 @@ export default function MapScreen({ navigation }) {
       var scopeLine = '';
       if (!isAlert) {
         scopeLine = mine
-          ? '<div class="overlay-scope overlay-scope-mine">🔒 내 폰에만</div>'
-          : '<div class="overlay-scope overlay-scope-public">🌐 공용</div>';
+          ? '<div class="overlay-scope overlay-scope-mine">내 폰에만</div>'
+          : '<div class="overlay-scope overlay-scope-public">공용</div>';
       }
       var content = '<div class="overlay' + (isAlert ? ' overlay-alert' : '') + (mine ? ' overlay-mine' : '') + '" id="ov_' + item.id + '">' +
-        (isAlert ? '<div class="overlay-type">🚨 ' + (typeNames[item.alertType] || '알림구역') + '</div>' : '') +
+        (isAlert ? '<div class="overlay-type">⚠ ' + (typeNames[item.alertType] || '알림구역') + '</div>' : '') +
         scopeLine +
         '<div class="overlay-head">' +
           '<div class="overlay-name">' + item.name + '</div>' +
@@ -431,7 +434,7 @@ export default function MapScreen({ navigation }) {
         '</div>' +
         (item.memo ? '<div class="overlay-memo">' + item.memo + '</div>' : '') +
         (item.memo2 ? '<div class="overlay-memo overlay-memo2">' + item.memo2 + '</div>' : '') +
-        '<div class="overlay-hint">👆 빠르게 두 번 탭 → 상세보기</div>' +
+        '<div class="overlay-hint">빠르게 두 번 탭 → 상세보기</div>' +
         '</div>';
       var overlay = new kakao.maps.CustomOverlay({
         position: new kakao.maps.LatLng(item.location.lat, item.location.lng),
@@ -500,9 +503,9 @@ export default function MapScreen({ navigation }) {
       {/* 핀 색 안내 */}
       <View style={styles.legend}>
         <View style={styles.legendRow}>
-          <View style={[styles.dot, { backgroundColor: '#0d9488' }]} />
+          <View style={[styles.dot, { backgroundColor: '#075B4B' }]} />
           <Text style={styles.legendText}>내 폰 {shown.mine}</Text>
-          <View style={[styles.dot, { backgroundColor: '#2563eb', marginLeft: 10 }]} />
+          <View style={[styles.dot, { backgroundColor: '#185FA5', marginLeft: 10 }]} />
           <Text style={styles.legendText}>공용 {shown.pub}</Text>
         </View>
         <Text style={styles.legendHint}>주변 {MAP_RADIUS_KM}km · 전체 {shown.total}건</Text>
@@ -528,12 +531,12 @@ const styles = StyleSheet.create({
   myLocBtnText: { fontSize: 24 },
   legend: {
     position: 'absolute', top: 12, left: 12,
-    backgroundColor: 'rgba(255,255,255,0.94)', borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: 10,
     paddingHorizontal: 12, paddingVertical: 8,
     shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 4, elevation: 4,
   },
   legendRow: { flexDirection: 'row', alignItems: 'center' },
   dot: { width: 10, height: 10, borderRadius: 5, marginRight: 5 },
-  legendText: { fontSize: 12, color: '#334155', fontWeight: 'bold' },
-  legendHint: { fontSize: 10, color: '#94a3b8', marginTop: 3 },
+  legendText: { fontSize: 13, color: '#1A1A18', fontWeight: '500' },
+  legendHint: { fontSize: 11, color: '#6E6C66', marginTop: 3 },
 });
