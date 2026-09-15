@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  스마트라이더 심볼 — 건물 + 신호 아크
+  흰색으로 그려두고, 다른 색이 필요한 곳에서는 android:tint 로 덮어쓴다.
+    플로팅 버튼 : 딥그린 원 위에 흰색 그대로
+    토스트      : android:tint="#075B4B" 로 딥그린
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- 건물. 창문은 evenOdd 로 뚫는다 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M3,4h9v17h-9z M4.5,6h1.8v1.8h-1.8z M8.7,6h1.8v1.8h-1.8z M4.5,9.6h1.8v1.8h-1.8z M8.7,9.6h1.8v1.8h-1.8z M4.5,13.2h1.8v1.8h-1.8z M8.7,13.2h1.8v1.8h-1.8z" />
+
+    <!-- 신호 아크 (안쪽) -->
+    <path
+        android:pathData="M14.1,9.73 A3.2,3.2 0 0 1 14.1,15.27"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.7"
+        android:strokeLineCap="round" />
+
+    <!-- 신호 아크 (바깥쪽) -->
+    <path
+        android:pathData="M15.3,7.65 A5.6,5.6 0 0 1 15.3,17.35"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.7"
+        android:strokeLineCap="round" />
+</vector>

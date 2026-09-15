@@ -1,14 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item>
-        <shape android:shape="rectangle">
-            <solid android:color="#F2111827" />
-            <corners android:radius="12dp" />
-        </shape>
-    </item>
-    <item android:gravity="left" android:width="4dp">
-        <shape android:shape="rectangle">
-            <solid android:color="#60A5FA" />
-        </shape>
-    </item>
-</layer-list>
+<!--
+  일반 토스트 배경 (평상시)
+  ※ 파일 이름은 예전 그대로 둔다. toast_card.xml 이 이 이름을 부르고 있어서
+     이름을 바꾸면 그쪽도 같이 고쳐야 한다. 색만 바꿨다.
+
+  밝은 톤으로 고정한다. 다크모드를 따라가지 않는다.
+  헬멧 쓰고 거치대 폰을 보는 조건에서는 햇빛이 기준이라
+  어두운 토스트는 낮에 오히려 안 보인다.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#FBFAF7" />
+    <corners android:radius="14dp" />
+    <!-- 좌측 색깔 띠 대신 테두리 전체를 브랜드 색으로 두른다 -->
+    <stroke android:width="2dp" android:color="#075B4B" />
+</shape>

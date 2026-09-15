@@ -15,6 +15,7 @@ import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.util.TypedValue
 import android.view.ViewGroup
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.os.Build
 import android.os.Handler
@@ -133,7 +134,7 @@ class ProximityOverlayService : Service() {
         const val EXTRA_PAYLOAD = "payload"
         const val AUTO_DISMISS = 15000L
         const val MAX_TOASTS = 3
-        const val CARD_HEIGHT_ESTIMATE = 170
+        const val CARD_HEIGHT_ESTIMATE = 170   // dp 단위. 토스트 한 장의 대략 높이(세로로 쌓을 간격)
         const val NOTI_ID = 2
         const val CHECK_INTERVAL = 15000L
         const val STALE_THRESHOLD = 120000L
@@ -469,6 +470,7 @@ class ProximityOverlayService : Service() {
             payload.put("name", b.name)
             payload.put("memo", b.memo)
             payload.put("memo2", b.memo2)
+            payload.put("dist", fresh[0].second.toInt())   // 토스트에 "45m" 표시용
         } else {
             payload.put("type", "cluster")
             val arr = JSONArray()
@@ -627,28 +629,30 @@ class ProximityOverlayService : Service() {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(14), dp(12), dp(14), dp(12))
                 background = GradientDrawable().apply {
-                    cornerRadius = dp(12).toFloat()
-                    setColor(Color.parseColor("#F2DC2626"))     // 빨강
-                    setStroke(dp(2), Color.parseColor("#FFFCA5A5"))
+                    cornerRadius = dp(14).toFloat()
+                    setColor(Color.parseColor("#FBFAF7"))
+                    // 강력알림만 빨강 테두리. 일반 토스트와 한눈에 갈린다
+                    setStroke(dp(3), Color.parseColor("#C62828"))
                 }
+                elevation = dp(8).toFloat()
             }
 
             root.addView(TextView(this).apply {
-                text = "🚨 " + typeLabel(point.type)
-                setTextColor(Color.WHITE)
-                textSize = 18f
+                text = typeLabel(point.type)
+                setTextColor(Color.parseColor("#C62828"))
+                textSize = 22f
             })
 
             root.addView(TextView(this).apply {
                 text = point.name + "  " + dist.toInt() + "m"
-                setTextColor(Color.parseColor("#FEE2E2"))
+                setTextColor(Color.parseColor("#1A1A18"))
                 textSize = 15f
-                setPadding(0, dp(4), 0, 0)
+                setPadding(0, dp(5), 0, 0)
             })
 
             val hint = TextView(this).apply {
                 text = "탭 → 알림 끄기 · 밀어서 닫기"
-                setTextColor(Color.parseColor("#FECACA"))
+                setTextColor(Color.parseColor("#9A968C"))
                 textSize = 11f
                 setPadding(0, dp(8), 0, 0)
             }
@@ -658,14 +662,14 @@ class ProximityOverlayService : Service() {
             fun muteButton(label: String, action: () -> Unit): TextView =
                 TextView(this).apply {
                     text = label
-                    setTextColor(Color.parseColor("#7F1D1D"))
+                    setTextColor(Color.WHITE)
                     textSize = 13f
                     gravity = Gravity.CENTER
                     background = GradientDrawable().apply {
                         cornerRadius = dp(8).toFloat()
-                        setColor(Color.parseColor("#FFFFFF"))
+                        setColor(Color.parseColor("#C62828"))
                     }
-                    layoutParams = LinearLayout.LayoutParams(0, dp(44), 1f).apply {
+                    layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply {
                         setMargins(dp(3), 0, dp(3), 0)
                     }
                     setOnClickListener {
@@ -684,7 +688,7 @@ class ProximityOverlayService : Service() {
             root.addView(buttonRow)
 
             val params = WindowManager.LayoutParams(
-                dp(270),
+                dp(300),
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
@@ -692,8 +696,8 @@ class ProximityOverlayService : Service() {
                 PixelFormat.TRANSLUCENT
             ).apply {
                 gravity = Gravity.TOP or Gravity.END
-                x = 12
-                y = 150 + activeToasts.size * CARD_HEIGHT_ESTIMATE
+                x = dp(10)
+                y = dp(56) + activeToasts.size * dp(CARD_HEIGHT_ESTIMATE)
             }
 
             val entry = ToastEntry(root, params)
@@ -726,7 +730,7 @@ class ProximityOverlayService : Service() {
                             // 밀어서 닫으면 아무것도 저장하지 않는다 → 다음에 또 울린다
                             if (abs(dx) > 80) removeToast(id)
                             else {
-                                params.x = 12
+                                params.x = dp(10)
                                 try { windowManager.updateViewLayout(root, params) } catch (e: Exception) {}
                             }
                         } else {
@@ -775,16 +779,19 @@ class ProximityOverlayService : Service() {
     private fun showFloatingButton() {
         if (floatingView != null) return
         try {
-            val btn = TextView(this).apply {
-                text = "R"
-                setTextColor(Color.WHITE)
-                textSize = 20f
-                gravity = Gravity.CENTER
+            // 앱의 FAB와 같은 얼굴로 맞춘다. 딥그린 원 + 흰 심볼.
+            // 배민 화면 위에 상시 떠 있으므로 평소에는 70%로 물러나 있다가
+            // 손이 닿는 순간 100%로 또렷해진다.
+            val btn = ImageView(this).apply {
+                setImageResource(R.drawable.ic_sr_symbol)
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                setPadding(dp(13), dp(13), dp(13), dp(13))
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.OVAL
-                    setColor(Color.parseColor("#CC3B82F6"))
-                    setStroke(dp(2), Color.parseColor("#FFFFFFFF"))
+                    setColor(Color.parseColor("#075B4B"))
+                    setStroke(dp(2), Color.parseColor("#FBFAF7"))
                 }
+                alpha = 0.7f
             }
 
             val p = WindowManager.LayoutParams(
@@ -813,6 +820,7 @@ class ProximityOverlayService : Service() {
                         startPX = p.x; startPY = p.y
                         moved = false
                         downAt = System.currentTimeMillis()
+                        btn.alpha = 1.0f          // 만지는 동안 또렷하게
                         true
                     }
                     MotionEvent.ACTION_MOVE -> {
@@ -829,11 +837,16 @@ class ProximityOverlayService : Service() {
                         true
                     }
                     MotionEvent.ACTION_UP -> {
+                        btn.alpha = 0.7f          // 손을 떼면 다시 물러난다
                         if (moved) {
                             prefs.edit().putInt("fab_x", p.x).putInt("fab_y", p.y).apply()
                         } else if (System.currentTimeMillis() - downAt < 500) {
                             togglePanel()
                         }
+                        true
+                    }
+                    MotionEvent.ACTION_CANCEL -> {
+                        btn.alpha = 0.7f
                         true
                     }
                     else -> false
@@ -880,17 +893,18 @@ class ProximityOverlayService : Service() {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(10), dp(10), dp(10), dp(10))
                 background = GradientDrawable().apply {
-                    cornerRadius = dp(12).toFloat()
-                    setColor(Color.parseColor("#F21E293B"))
-                    setStroke(dp(1), Color.parseColor("#553B82F6"))
+                    cornerRadius = dp(14).toFloat()
+                    setColor(Color.parseColor("#FBFAF7"))
+                    setStroke(dp(1), Color.parseColor("#DCD8CE"))
                 }
+                elevation = dp(8).toFloat()
             }
 
             // 헤더
             root.addView(TextView(this).apply {
                 text = if (items.isEmpty()) "근처에 등록된 건물이 없습니다"
                        else "근처 건물 " + items.size + "곳"
-                setTextColor(Color.parseColor("#94A3B8"))
+                setTextColor(Color.parseColor("#6E6C66"))
                 textSize = 12f
                 setPadding(dp(4), 0, dp(4), dp(6))
             })
@@ -898,12 +912,12 @@ class ProximityOverlayService : Service() {
             for ((b, dist) in items) {
                 val row = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
-                    setPadding(dp(8), dp(10), dp(8), dp(10))
+                    setPadding(dp(6), dp(10), dp(6), dp(10))
                 }
 
                 val title = TextView(this).apply {
-                    text = "🏢 " + b.name + "  " + dist.toInt() + "m"
-                    setTextColor(Color.WHITE)
+                    text = b.name + "  " + dist.toInt() + "m"
+                    setTextColor(Color.parseColor("#1A1A18"))
                     textSize = 15f
                 }
 
@@ -911,17 +925,19 @@ class ProximityOverlayService : Service() {
                 if (b.memo.isNotEmpty()) memoLines.add(b.memo)
                 if (b.memo2.isNotEmpty()) memoLines.add(b.memo2)
 
+                val hasMemo = memoLines.isNotEmpty()
                 val memo = TextView(this).apply {
-                    text = if (memoLines.isNotEmpty()) memoLines.joinToString("\n") else "(메모 없음)"
-                    setTextColor(Color.parseColor("#CBD5E1"))
-                    textSize = 13f
+                    text = if (hasMemo) memoLines.joinToString("\n") else "출입정보 없음"
+                    setTextColor(Color.parseColor(if (hasMemo) "#075B4B" else "#9A968C"))
+                    textSize = if (hasMemo) 22f else 13f
+                    if (hasMemo) typeface = android.graphics.Typeface.MONOSPACE
                     setPadding(dp(4), dp(6), dp(4), 0)
                     visibility = View.GONE
                 }
 
                 val hint = TextView(this).apply {
-                    text = "빠르게 두 번 탭 → 상세보기"
-                    setTextColor(Color.parseColor("#60A5FA"))
+                    text = "두 번 탭 → 상세보기"
+                    setTextColor(Color.parseColor("#9A968C"))
                     textSize = 11f
                     setPadding(dp(4), dp(4), dp(4), 0)
                     visibility = View.GONE
@@ -968,7 +984,7 @@ class ProximityOverlayService : Service() {
                     layoutParams = LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, dp(1)
                     )
-                    setBackgroundColor(Color.parseColor("#33FFFFFF"))
+                    setBackgroundColor(Color.parseColor("#E5E1D8"))
                 })
             }
 
@@ -993,8 +1009,8 @@ class ProximityOverlayService : Service() {
             root.addView(LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 setPadding(0, dp(10), 0, dp(2))
-                addView(panelButton("📱 앱 열기", "#475569") { openAppHome() })
-                addView(panelButton("🗺️ 지도 열기", "#3B82F6") { openMapHere() })
+                addView(panelButton("앱 열기", "#6E6C66") { openAppHome() })
+                addView(panelButton("지도 열기", "#075B4B") { openMapHere() })
             })
 
             // ── 패널 위치 계산 ──
@@ -1002,7 +1018,7 @@ class ProximityOverlayService : Service() {
             // 화면 크기를 보고 왼쪽/위쪽으로 펼친다.
             val screenW = resources.displayMetrics.widthPixels
             val screenH = resources.displayMetrics.heightPixels
-            val panelW = dp(240)
+            val panelW = dp(264)
             val btnSize = dp(52)
             val gap = dp(6)
 
@@ -1238,34 +1254,37 @@ class ProximityOverlayService : Service() {
         val memoView = view.findViewById<TextView>(R.id.toast_memo)
         val closeView = view.findViewById<TextView>(R.id.toast_close)
         val hintView = view.findViewById<TextView>(R.id.toast_hint)
+        val distView = view.findViewById<TextView>(R.id.toast_dist)
 
         val type = payload.optString("type", "single")
         var buildingId = ""
-        var memoShown = false
 
         if (type == "cluster") {
             // 여러 건물이 걸렸을 때도 각 건물의 출입정보를 같이 보여준다
             val candidates = payload.getJSONArray("candidates")
-            nameView.text = "🏢 근처 건물 (${candidates.length()})"
+            nameView.text = "근처 건물 ${candidates.length()}곳"
             val sb = StringBuilder()
             for (i in 0 until candidates.length()) {
                 val c = candidates.getJSONObject(i)
-                sb.append("• ").append(c.optString("name", ""))
+                sb.append(c.optString("name", ""))
                 val m1 = c.optString("memo", "")
                 val m2 = c.optString("memo2", "")
-                if (m1.isNotEmpty()) sb.append("\n    ").append(m1)
-                if (m2.isNotEmpty()) sb.append("\n    ").append(m2)
-                if (i < candidates.length() - 1) sb.append("\n")
+                if (m1.isNotEmpty()) sb.append("\n").append(m1)
+                if (m2.isNotEmpty()) sb.append("\n").append(m2)
+                if (i < candidates.length() - 1) sb.append("\n\n")
             }
             memoView.text = sb.toString()
+            // 여러 건물이 한 칸에 들어가므로 글자를 줄인다.
+            // 한 건물일 때만 30sp 를 쓴다.
+            memoView.textSize = 17f
             memoView.visibility = View.VISIBLE
-            memoShown = true
+            distView.visibility = View.GONE
         } else {
             buildingId = payload.optString("buildingId", "")
             val name = payload.optString("name", "")
             val memo = payload.optString("memo", "")
             val memo2 = payload.optString("memo2", "")
-            nameView.text = "🏢 $name"
+            nameView.text = name
 
             // 출입정보 1, 2를 있는 것만 줄바꿈해서 표시
             val lines = ArrayList<String>()
@@ -1276,23 +1295,33 @@ class ProximityOverlayService : Service() {
                 memoView.visibility = View.GONE
             } else {
                 memoView.text = lines.joinToString("\n")
+                memoView.textSize = 30f
                 memoView.visibility = View.VISIBLE
-                memoShown = true
+            }
+
+            val dist = payload.optInt("dist", -1)
+            if (dist >= 0) {
+                distView.text = dist.toString() + "m"
+                distView.visibility = View.VISIBLE
+            } else {
+                distView.visibility = View.GONE
             }
         }
 
-        hintView.text = if (type == "cluster") "더블탭 → 앱 열기" else "더블탭 → 상세보기"
+        hintView.text = if (type == "cluster") "두 번 탭 → 앱 열기" else "두 번 탭 → 상세보기"
+        // 힌트를 처음부터 보여준다. 어떻게 쓰는지 모르면 기능이 없는 것과 같다
+        hintView.visibility = View.VISIBLE
 
         val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
+            dp(300),
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.END
-            x = 12
-            y = 150 + activeToasts.size * CARD_HEIGHT_ESTIMATE
+            x = dp(10)
+            y = dp(56) + activeToasts.size * dp(CARD_HEIGHT_ESTIMATE)
         }
 
         val entry = ToastEntry(view, params)
@@ -1301,7 +1330,6 @@ class ProximityOverlayService : Service() {
         closeView.setOnClickListener { removeToast(id) }
 
         var pinned = false
-        var expanded = memoShown
         var lastTapAt = 0L
         var startX = 0f
         var startParamX = 0
@@ -1330,28 +1358,28 @@ class ProximityOverlayService : Service() {
                         if (abs(dx) > 80) {
                             removeToast(id)
                         } else {
-                            params.x = 12
+                            params.x = dp(10)
                             try { windowManager.updateViewLayout(view, params) } catch (e: Exception) {}
                         }
                     } else {
                         val now = System.currentTimeMillis()
-                        if (pinned && now - lastTapAt < DOUBLE_TAP_WINDOW) {
-                            // 더블탭 → 앱 진입
+                        if (now - lastTapAt < DOUBLE_TAP_WINDOW) {
+                            // 두 번 탭 → 앱 진입
                             lastTapAt = 0L
                             removeToast(id)
                             openAppWithDetail(buildingId)
                         } else {
-                            // 단일 탭 → 고정 / 메모 펼치기
+                            // 한 번 탭 → 고정만 한다.
+                            // 내용은 처음부터 펼쳐져 있으므로 접지 않는다.
+                            // (접히면 비번을 다시 보려고 또 손이 가야 한다)
                             lastTapAt = now
                             if (!pinned) {
                                 pinned = true
                                 entry.pinned = true
                                 view.setBackgroundResource(R.drawable.toast_bg_pinned)
-                                hintView.visibility = View.VISIBLE
+                                hintView.text = "고정됨 · 두 번 탭 → 상세보기"
                                 entry.dismissRunnable?.let { handler.removeCallbacks(it) }
                             }
-                            expanded = !expanded
-                            memoView.visibility = if (expanded || type == "cluster") View.VISIBLE else View.GONE
                         }
                     }
                     true
@@ -1382,7 +1410,7 @@ class ProximityOverlayService : Service() {
     private fun repositionToasts() {
         var index = 0
         for ((_, entry) in activeToasts) {
-            entry.params.y = 150 + index * CARD_HEIGHT_ESTIMATE
+            entry.params.y = dp(56) + index * dp(CARD_HEIGHT_ESTIMATE)
             try { windowManager.updateViewLayout(entry.view, entry.params) } catch (e: Exception) {}
             index++
         }

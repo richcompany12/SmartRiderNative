@@ -1,64 +1,97 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  일반 토스트.
+  달리면서 힐끗 보는 화면이라 비번이 주인공이다.
+  상세 화면이 30sp 이므로 여기는 그보다 작지 않게 간다.
+-->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/toast_root"
-    android:layout_width="wrap_content"
+    android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
     android:background="@drawable/toast_bg_blue"
     android:elevation="8dp"
-    android:maxWidth="320dp"
-    android:paddingStart="16dp"
-    android:paddingEnd="12dp"
-    android:paddingTop="10dp"
-    android:paddingBottom="10dp">
+    android:paddingStart="14dp"
+    android:paddingEnd="10dp"
+    android:paddingTop="11dp"
+    android:paddingBottom="12dp">
 
+    <!-- 윗줄: 심볼 + 건물명 + 닫기 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical">
 
+        <ImageView
+            android:id="@+id/toast_icon"
+            android:layout_width="18dp"
+            android:layout_height="18dp"
+            android:layout_marginEnd="7dp"
+            android:src="@drawable/ic_sr_symbol"
+            android:tint="#075B4B"
+            android:contentDescription="@null" />
+
         <TextView
             android:id="@+id/toast_name"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="🏢 건물명"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:textStyle="bold"
-            android:maxLines="2" />
+            android:text="건물명"
+            android:textColor="#1A1A18"
+            android:textSize="16sp"
+            android:textStyle="normal"
+            android:maxLines="2"
+            android:ellipsize="end" />
 
+        <!-- 닫기는 장갑 끼고도 눌려야 해서 44dp 확보 -->
         <TextView
             android:id="@+id/toast_close"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:text="×"
-            android:textColor="#9CA3AF"
-            android:textSize="20sp"
-            android:paddingStart="8dp"
-            android:paddingEnd="4dp" />
+            android:textColor="#9A968C"
+            android:textSize="24sp"
+            android:gravity="center" />
     </LinearLayout>
 
+    <!-- 비번. 이 토스트의 주인공 -->
     <TextView
         android:id="@+id/toast_memo"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="7dp"
+        android:background="@drawable/toast_memo_bg"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="9dp"
         android:text=""
-        android:textColor="#FDE68A"
-        android:textSize="12sp"
+        android:textColor="#075B4B"
+        android:textSize="30sp"
         android:fontFamily="monospace"
+        android:lineSpacingExtra="2dp"
+        android:visibility="gone" />
+
+    <!-- 거리 -->
+    <TextView
+        android:id="@+id/toast_dist"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="7dp"
+        android:text=""
+        android:textColor="#6E6C66"
+        android:textSize="13sp"
         android:visibility="gone" />
 
     <TextView
         android:id="@+id/toast_hint"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:text="✏️ 2초 누르면 상세보기"
-        android:textColor="#6B7280"
-        android:textSize="10sp"
+        android:layout_marginTop="7dp"
+        android:text="두 번 탭 → 상세보기"
+        android:textColor="#9A968C"
+        android:textSize="11sp"
         android:gravity="center"
         android:visibility="gone" />
 </LinearLayout>
