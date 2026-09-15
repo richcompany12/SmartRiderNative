@@ -2,14 +2,21 @@ import { useRef, useEffect, useState, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
   Animated, Dimensions, Pressable, Alert, ScrollView,
-  BackHandler, ActivityIndicator
+  BackHandler, ActivityIndicator, Modal, TextInput
 } from 'react-native';
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme';
 import { useAuth } from '../AuthContext';
 import { roleLabel } from '../roles';
-import { shareBackup, pickBackupFile, restoreFromData } from '../backup';
+import {
+  shareBackup,
+  pickBackupFile,
+  decryptBackup,
+  restoreFromData,
+  validatePassword,
+  getSavedPassword,
+} from '../backup';
 import { invalidateBuildingsCache } from '../buildingsCache';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -35,6 +42,16 @@ export default function Sidebar({ visible, onClose, navigation }) {
   const fade = useRef(new Animated.Value(0)).current;
   const [busy, setBusy] = useState('');
 
+  // ── 비밀번호 창 상태 ─────────────────────────────────
+  // pwMode: null(닫힘) | 'backup'(새로 만들기) | 'restore'(풀기) | 'view'(다시 보기)
+  const [pwMode, setPwMode] = useState(null);
+  const [pw, setPw] = useState('');
+  const [pw2, setPw2] = useState('');
+  const [pwErr, setPwErr] = useState('');
+  const [pwBusy, setPwBusy] = useState(false);
+  const [pendingFile, setPendingFile] = useState(null); // 복원 대기 중인 암호화 파일
+  const [savedPw, setSavedPw] = useState('');
+
   useEffect(() => {
     Animated.parallel([
       Animated.timing(slide, {
@@ -51,15 +68,16 @@ export default function Sidebar({ visible, onClose, navigation }) {
   }, [visible]);
 
   // 메뉴가 열려 있을 때 뒤로가기를 누르면 앱이 꺼지던 문제.
-  // 메뉴만 닫고 끝낸다.
+  // 메뉴만 닫고 끝낸다. 비밀번호 창이 떠 있으면 그것부터 닫는다.
   useEffect(() => {
     if (!visible) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (pwMode) { closePw(); return true; }
       onClose();
       return true;   // true = 여기서 처리했으니 앱을 끄지 마라
     });
     return () => sub.remove();
-  }, [visible]);
+  }, [visible, pwMode]);
 
   if (!visible) return null;
 
@@ -89,40 +107,52 @@ export default function Sidebar({ visible, onClose, navigation }) {
     setTimeout(() => Alert.alert(name, '아직 준비 중인 기능입니다.'), 220);
   };
 
+  // ── 비밀번호 창 열고 닫기 ─────────────────────────────
+  const closePw = () => {
+    setPwMode(null);
+    setPw('');
+    setPw2('');
+    setPwErr('');
+    setPwBusy(false);
+    setPendingFile(null);
+    setSavedPw('');
+  };
+
   // ── 백업하기 ───────────────────────────────────────────
+  // 비밀번호 창부터 연다. 경고 문구는 창 안에 들어있다.
   const handleBackup = () => {
-    Alert.alert(
-      '백업하기',
-      '내 폰에 저장된 건물·메모·즐겨찾기를 파일 하나로 만들어 내보냅니다.\n\n' +
-      '⚠️ 파일에는 출입 비밀번호가 그대로 들어있습니다.\n' +
-      '카카오톡 나에게 보내기, 이메일, 보안 폴더처럼 나만 볼 수 있는 곳에 보관하세요.',
-      [
-        { text: '취소', style: 'cancel' },
-        {
-          text: '만들기',
-          onPress: async () => {
-            setBusy('백업 파일을 만드는 중...');
-            try {
-              const r = await shareBackup();
-              setBusy('');
-              setTimeout(() => Alert.alert(
-                '백업 완료',
-                `건물 ${r.counts.buildings}건\n` +
-                `메모 ${r.counts.notes}건\n` +
-                `즐겨찾기 ${r.counts.favorites}건`
-              ), 400);
-            } catch (e) {
-              setBusy('');
-              Alert.alert('실패', e?.message || '백업에 실패했습니다.');
-            }
-          }
-        }
-      ]
-    );
+    setPw('');
+    setPw2('');
+    setPwErr('');
+    setPwMode('backup');
+  };
+
+  const doBackup = async () => {
+    const bad = validatePassword(pw);
+    if (bad) { setPwErr(bad); return; }
+    if (pw !== pw2) { setPwErr('두 번 입력한 비밀번호가 다릅니다.'); return; }
+
+    setPwBusy(true);
+    try {
+      const r = await shareBackup(pw);
+      closePw();
+      // 공유 시트가 닫히는 시간을 주고 결과를 띄운다.
+      setTimeout(() => Alert.alert(
+        '백업 완료',
+        `건물 ${r.counts.buildings}건\n` +
+        `메모 ${r.counts.notes}건\n` +
+        `즐겨찾기 ${r.counts.favorites}건\n\n` +
+        '비밀번호는 메뉴 → 백업 비밀번호 다시 보기에서 확인할 수 있습니다.'
+      ), 400);
+    } catch (e) {
+      setPwErr(e?.message || '백업에 실패했습니다.');
+      setPwBusy(false);
+    }
   };
 
   // ── 복원하기 ───────────────────────────────────────────
-  // 파일을 먼저 읽어서 내용을 보여주고, 그다음에 방식을 고르게 한다.
+  // 파일을 먼저 읽는다.
+  // 암호화된 파일이면 비밀번호를 받고, 옛 평문 파일이면 바로 진행한다.
   const handleRestore = async () => {
     setBusy('파일을 여는 중...');
     let picked;
@@ -136,6 +166,35 @@ export default function Sidebar({ visible, onClose, navigation }) {
     setBusy('');
     if (!picked) return;   // 사용자가 취소함
 
+    if (picked.encrypted) {
+      setPendingFile(picked);
+      setPw('');
+      setPw2('');
+      setPwErr('');
+      setPwMode('restore');
+    } else {
+      askRestoreMode(picked);
+    }
+  };
+
+  // 암호 풀기
+  const doDecrypt = async () => {
+    if (!pw) { setPwErr('비밀번호를 입력해주세요.'); return; }
+
+    setPwBusy(true);
+    try {
+      const data = await decryptBackup(pendingFile.file, pw);
+      const picked = pendingFile;
+      closePw();
+      setTimeout(() => askRestoreMode({ ...picked, data }), 300);
+    } catch (e) {
+      setPwErr(e?.message || '비밀번호가 맞지 않습니다.');
+      setPwBusy(false);
+    }
+  };
+
+  // 합치기 / 덮어쓰기 고르기
+  const askRestoreMode = (picked) => {
     const when = picked.exportedAt
       ? new Date(picked.exportedAt).toLocaleString('ko-KR')
       : '알 수 없음';
@@ -187,6 +246,23 @@ export default function Sidebar({ visible, onClose, navigation }) {
     }
   };
 
+  // ── 백업 비밀번호 다시 보기 ────────────────────────────
+  // 이 폰이 살아있는 동안에는 언제든 확인할 수 있게 한다.
+  // 폰을 바꾸기 전날 여기서 확인해 적어두면 된다.
+  const handleViewPassword = async () => {
+    const saved = await getSavedPassword();
+    if (!saved) {
+      onClose();
+      setTimeout(() => Alert.alert(
+        '저장된 비밀번호 없음',
+        '아직 이 폰에서 백업을 만든 적이 없습니다.'
+      ), 220);
+      return;
+    }
+    setSavedPw(saved);
+    setPwMode('view');
+  };
+
   return (
     <View style={StyleSheet.absoluteFill}>
       {/* 어두운 배경 — 누르면 닫힘 */}
@@ -231,8 +307,10 @@ export default function Sidebar({ visible, onClose, navigation }) {
           <Text style={s.sectionTitle}>내 데이터</Text>
           <MenuItem s={s} c={c} icon="cloud-upload-outline" label="백업하기" onPress={handleBackup} />
           <MenuItem s={s} c={c} icon="cloud-download-outline" label="복원하기" onPress={handleRestore} />
+          <MenuItem s={s} c={c} icon="key-outline" label="백업 비밀번호 다시 보기" onPress={handleViewPassword} />
           <Text style={s.hint}>
-            내 폰에만 있는 데이터입니다. 폰을 바꾸기 전에 꼭 백업하세요.
+            내 폰에만 있는 데이터입니다. 백업 파일은 비밀번호로 잠기므로
+            카톡·메일로 보내도 남이 열 수 없습니다.
           </Text>
 
           {isAdmin && (
@@ -258,6 +336,145 @@ export default function Sidebar({ visible, onClose, navigation }) {
           </TouchableOpacity>
         </View>
       </Animated.View>
+
+      {/* ── 비밀번호 창 ─────────────────────────────────── */}
+      <Modal visible={!!pwMode} transparent animationType="fade" onRequestClose={closePw}>
+        <View style={s.modalBg}>
+          <View style={s.modalBox}>
+
+            {/* ① 백업 — 새 비밀번호 정하기 */}
+            {pwMode === 'backup' && (
+              <>
+                <Text style={s.modalTitle}>백업 비밀번호를 정해주세요</Text>
+                <Text style={s.modalDesc}>
+                  이 파일에는 출입 비밀번호가 들어 있습니다.{'\n'}
+                  카톡이나 메일로 보내도 안전하도록 잠급니다.
+                </Text>
+
+                <TextInput
+                  style={s.input}
+                  value={pw}
+                  onChangeText={(t) => { setPw(t); setPwErr(''); }}
+                  placeholder="영문+숫자 8자 이상"
+                  placeholderTextColor={c.textFaint}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  editable={!pwBusy}
+                />
+                <TextInput
+                  style={s.input}
+                  value={pw2}
+                  onChangeText={(t) => { setPw2(t); setPwErr(''); }}
+                  placeholder="한 번 더"
+                  placeholderTextColor={c.textFaint}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  editable={!pwBusy}
+                />
+
+                {!!pwErr && <Text style={s.errText}>{pwErr}</Text>}
+
+                <View style={s.warnBox}>
+                  <Text style={s.warnText}>
+                    비밀번호를 잊으면 복원할 수 없습니다.{'\n'}
+                    만든 사람도 열 수 없습니다.
+                  </Text>
+                </View>
+
+                {pwBusy ? (
+                  <View style={s.pwBusy}>
+                    <ActivityIndicator color={c.accent} />
+                    <Text style={s.pwBusyText}>암호를 거는 중입니다…</Text>
+                  </View>
+                ) : (
+                  <View style={s.btnRow}>
+                    <TouchableOpacity style={s.btnGhost} onPress={closePw}>
+                      <Text style={s.btnGhostText}>취소</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={s.btnMain} onPress={doBackup}>
+                      <Text style={s.btnMainText}>백업 만들기</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </>
+            )}
+
+            {/* ② 복원 — 비밀번호 풀기 */}
+            {pwMode === 'restore' && (
+              <>
+                <Text style={s.modalTitle}>백업 비밀번호를 입력해주세요</Text>
+                <Text style={s.modalDesc}>
+                  {pendingFile?.name}{'\n'}
+                  건물 {pendingFile?.counts?.buildings ?? 0}건
+                  {pendingFile?.exportedAt
+                    ? ' · ' + new Date(pendingFile.exportedAt).toLocaleDateString('ko-KR')
+                    : ''}
+                </Text>
+
+                <TextInput
+                  style={s.input}
+                  value={pw}
+                  onChangeText={(t) => { setPw(t); setPwErr(''); }}
+                  placeholder="백업할 때 정한 비밀번호"
+                  placeholderTextColor={c.textFaint}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  editable={!pwBusy}
+                />
+
+                {!!pwErr && <Text style={s.errText}>{pwErr}</Text>}
+
+                {pwBusy ? (
+                  <View style={s.pwBusy}>
+                    <ActivityIndicator color={c.accent} />
+                    <Text style={s.pwBusyText}>암호를 푸는 중입니다…</Text>
+                  </View>
+                ) : (
+                  <View style={s.btnRow}>
+                    <TouchableOpacity style={s.btnGhost} onPress={closePw}>
+                      <Text style={s.btnGhostText}>취소</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={s.btnMain} onPress={doDecrypt}>
+                      <Text style={s.btnMainText}>열기</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </>
+            )}
+
+            {/* ③ 다시 보기 */}
+            {pwMode === 'view' && (
+              <>
+                <Text style={s.modalTitle}>백업 비밀번호</Text>
+                <Text style={s.modalDesc}>
+                  이 폰에서 마지막으로 만든 백업의 비밀번호입니다.
+                </Text>
+
+                <View style={s.savedBox}>
+                  <Text style={s.savedText} selectable>{savedPw}</Text>
+                </View>
+
+                <View style={s.warnBox}>
+                  <Text style={s.warnText}>
+                    폰을 바꾸기 전에 적어두세요.{'\n'}
+                    폰이 고장나면 이 화면도 함께 사라집니다.
+                  </Text>
+                </View>
+
+                <View style={s.btnRow}>
+                  <TouchableOpacity style={s.btnMain} onPress={closePw}>
+                    <Text style={s.btnMainText}>닫기</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -299,4 +516,61 @@ const makeStyles = (c, font, space, radius, TAP) => StyleSheet.create({
     backgroundColor: c.surfaceSoft,
   },
   logoutText: { ...font.body, fontWeight: '500', color: c.danger },
+
+  // ── 비밀번호 창 ─────────────────────────────────────
+  modalBg: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center', padding: space.lg,
+  },
+  modalBox: {
+    backgroundColor: c.surface, borderRadius: radius.lg,
+    padding: space.lg,
+  },
+  modalTitle: { ...font.head, color: c.text },
+  modalDesc: { ...font.sub, color: c.textSub, marginTop: space.sm, lineHeight: 20 },
+
+  input: {
+    minHeight: TAP,
+    borderWidth: 1, borderColor: c.lineStrong, borderRadius: radius.md,
+    paddingHorizontal: space.md, marginTop: space.md,
+    color: c.text, backgroundColor: c.bg,
+    ...font.body,
+  },
+  errText: { ...font.sub, color: c.danger, marginTop: space.sm },
+
+  warnBox: {
+    backgroundColor: c.warnSoft, borderRadius: radius.md,
+    padding: space.md, marginTop: space.md,
+  },
+  warnText: { ...font.tiny, color: c.warn, lineHeight: 18 },
+
+  savedBox: {
+    backgroundColor: c.bg, borderWidth: 1, borderColor: c.lineStrong,
+    borderRadius: radius.md, paddingVertical: space.md,
+    alignItems: 'center', marginTop: space.md,
+  },
+  savedText: {
+    fontFamily: 'monospace', fontSize: 22, letterSpacing: 1,
+    color: c.accent,
+  },
+
+  btnRow: { flexDirection: 'row', gap: space.sm, marginTop: space.lg },
+  btnGhost: {
+    flex: 1, minHeight: TAP, borderRadius: radius.md,
+    borderWidth: 1, borderColor: c.lineStrong,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  btnGhostText: { ...font.body, color: c.textSub },
+  btnMain: {
+    flex: 2, minHeight: TAP, borderRadius: radius.md,
+    backgroundColor: c.accent,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  btnMainText: { ...font.body, fontWeight: '500', color: c.onAccent },
+
+  pwBusy: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: space.sm, minHeight: TAP, marginTop: space.lg,
+  },
+  pwBusyText: { ...font.sub, color: c.textSub },
 });

@@ -1,5 +1,5 @@
 {
-   "expo": {
+  "expo": {
     "name": "스마트라이더",
     "slug": "SmartRiderNative3",
     "version": "1.0.0",
@@ -42,7 +42,8 @@
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true
         }
-      ]
+      ],
+      "expo-secure-store"
     ]
   }
 }
