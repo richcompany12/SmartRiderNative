@@ -13,6 +13,7 @@ expo-env.d.ts
 .kotlin/
 *.orig.*
 *.jks
+*.keystore
 *.p8
 *.p12
 *.key
@@ -45,3 +46,4 @@ adb
 adb.exe
 *.json.backup 
 buildings-export*.json 
+android/app/src/main/res_backup/
