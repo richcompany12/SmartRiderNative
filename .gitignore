@@ -18,6 +18,7 @@ expo-env.d.ts
 *.p12
 *.key
 *.mobileprovision
+.idea/
 
 # Metro
 .metro-health-check*
@@ -47,5 +48,3 @@ adb.exe
 *.json.backup 
 buildings-export*.json 
 android/app/src/main/res_backup/
-
-.idea/
