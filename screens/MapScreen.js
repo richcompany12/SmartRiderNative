@@ -191,15 +191,41 @@ export default function MapScreen({ navigation }) {
     }
     body { width: 100vw; height: 100vh; overflow: hidden; }
     #map { width: 100%; height: 100%; }
+
+    /* ── 메모창 바깥 껍데기 ───────────────────────────
+       너비는 여기서 딱 한 번만 정한다. 안쪽은 전부 100%로 따라간다.
+       아래쪽 투명 여백 50px = 핀 높이보다 살짝 크게 잡은 것.
+       yAnchor:1 이 이 껍데기의 '맨 아래'를 핀 끝에 맞추므로
+       실제 상자는 핀 바로 위에 딱 붙어서 뜬다. */
+    .ov-wrap { width: 250px; padding-bottom: 50px; position: relative; }
+
+    /* 어느 핀에서 나온 창인지 보여주는 꼬리 */
+    .ov-tail {
+      position: absolute; left: 50%; margin-left: -8px; bottom: 42px;
+      width: 0; height: 0;
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-top: 9px solid #fff;
+    }
+
     .overlay {
+      width: 100%;
       background: #fff; border-radius: 10px;
       /* 오른쪽 여백을 넉넉히 둬서 닫기 버튼과 글자가 겹치지 않게 한다 */
       padding: 11px 38px 11px 14px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.2);
       font-family: sans-serif; position: relative;
       border-left: 4px solid #185FA5;
-      width: 250px; box-sizing: border-box;
+      box-sizing: border-box;
+      overflow: hidden;
     }
+
+    /* ★ 글자가 상자 밖으로 빠져나가던 진짜 원인.
+       바깥에서 물려받은 nowrap 때문에 줄바꿈 자체가 막혀 있었다.
+       nowrap 상태에서는 overflow-wrap 을 아무리 줘도 안 먹는다.
+       여기서 강제로 풀어준다. */
+    .overlay, .overlay * { white-space: normal; }
+
     .overlay-head { width: 100%; }
     /* flex를 쓰지 않는다. flex 항목은 내용보다 작아지길 거부해서
        긴 이름이 상자를 밀어내고 잘려 보였다. 그냥 블록이면 알아서 줄바꿈된다. */
@@ -256,13 +282,51 @@ export default function MapScreen({ navigation }) {
       return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
     }
 
-    var PIN_MINE = null, PIN_PUBLIC = null;
+    var PIN_MINE = null, PIN_PUBLIC = null, PIN_SELECTED = null;
+    var ALERT_IMG = null, ALERT_IMG_SELECTED = null;
+    var ALERT_ICON_URL = 'https://cdn-icons-png.flaticon.com/512/564/564619.png';
+
+    // 마커 이미지는 처음 한 번만 만들어두고 계속 재사용한다
+    function ensureImages() {
+      if (PIN_MINE) return;
+      PIN_MINE     = new kakao.maps.MarkerImage(makePin('#075B4B'), new kakao.maps.Size(26, 36));
+      PIN_PUBLIC   = new kakao.maps.MarkerImage(makePin('#185FA5'), new kakao.maps.Size(26, 36));
+      // 선택된 핀: 빨강 + 살짝 크게. 핀 끝(뾰족한 부분)이 그대로 그 자리에 있는다
+      PIN_SELECTED = new kakao.maps.MarkerImage(makePin('#D92B2B'), new kakao.maps.Size(30, 42));
+      ALERT_IMG          = new kakao.maps.MarkerImage(ALERT_ICON_URL, new kakao.maps.Size(35, 35));
+      ALERT_IMG_SELECTED = new kakao.maps.MarkerImage(ALERT_ICON_URL, new kakao.maps.Size(46, 46));
+    }
+
     function pinImage(isMine) {
-      if (!PIN_MINE) {
-        PIN_MINE = new kakao.maps.MarkerImage(makePin('#075B4B'), new kakao.maps.Size(26, 36));
-        PIN_PUBLIC = new kakao.maps.MarkerImage(makePin('#185FA5'), new kakao.maps.Size(26, 36));
-      }
+      ensureImages();
       return isMine ? PIN_MINE : PIN_PUBLIC;
+    }
+
+    // ── 선택된 핀 표시 ──────────────────────────────
+    //  지금 열려 있는 메모창이 어느 핀 것인지 한눈에 보이게 한다
+    var selMarker = null, selOriginalImg = null;
+
+    function selectPin(marker, originalImg, selectedImg) {
+      clearPinSelection();
+      selMarker = marker;
+      selOriginalImg = originalImg;
+      marker.setImage(selectedImg);
+      marker.setZIndex(20);   // 다른 핀에 가리지 않게 위로 올린다
+    }
+
+    function clearPinSelection() {
+      if (selMarker && selOriginalImg) {
+        selMarker.setImage(selOriginalImg);
+        selMarker.setZIndex(1);
+      }
+      selMarker = null;
+      selOriginalImg = null;
+    }
+
+    // 건물 이름에 <, & 같은 글자가 있어도 화면이 깨지지 않게
+    function esc(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 
     function isMineItem(b) {
@@ -280,6 +344,10 @@ export default function MapScreen({ navigation }) {
       //    initMap 안에 두면 INIT이 올 때마다 리스너가 쌓여서
       //    한 번 눌렀는데 팝업이 여러 장 뜬다. (이번 버그의 원인)
       setupLongPress();
+
+      // 빈 지도를 톡 치면 메모창이 닫히고 핀 색도 돌아온다.
+      // 혹시 이 줄 때문에 창이 제멋대로 닫히면 이 한 줄만 지우면 된다.
+      kakao.maps.event.addListener(map, 'click', function() { closeOverlay(); });
 
       document.addEventListener('message', handleRNMessage);
       window.addEventListener('message', handleRNMessage);
@@ -321,11 +389,15 @@ export default function MapScreen({ navigation }) {
     }
 
     function clearMarkers() {
+      // 마커를 통째로 지우므로 선택 표시도 같이 초기화한다
+      selMarker = null;
+      selOriginalImg = null;
       placedMarkers.forEach(function(m) { m.setMap(null); });
       placedMarkers = [];
     }
 
     function initMap(data) {
+      ensureImages();
       mapBuildings = data.buildings || [];
 
       var myLat = data.myLocation.lat;
@@ -348,12 +420,14 @@ export default function MapScreen({ navigation }) {
 
       // 건물 마커
       mapBuildings.forEach(function(b) {
+        var normalImg = pinImage(isMineItem(b));
         var marker = new kakao.maps.Marker({
           position: new kakao.maps.LatLng(b.location.lat, b.location.lng),
           map: map, title: b.name,
-          image: pinImage(isMineItem(b))
+          image: normalImg
         });
         kakao.maps.event.addListener(marker, 'click', function() {
+          selectPin(marker, normalImg, PIN_SELECTED);
           showOverlay(b, false);
         });
         placedMarkers.push(marker);
@@ -364,13 +438,12 @@ export default function MapScreen({ navigation }) {
         var marker = new kakao.maps.Marker({
           position: new kakao.maps.LatLng(a.location.lat, a.location.lng),
           map: map,
-          image: new kakao.maps.MarkerImage(
-            'https://cdn-icons-png.flaticon.com/512/564/564619.png',
-            new kakao.maps.Size(35, 35)
-          ),
+          image: ALERT_IMG,
           title: a.name
         });
         kakao.maps.event.addListener(marker, 'click', function() {
+          // 알림 마커는 원래 빨간 아이콘이라 색 대신 크기로 구분한다
+          selectPin(marker, ALERT_IMG, ALERT_IMG_SELECTED);
           showOverlay(a, true);
         });
         placedMarkers.push(marker);
@@ -425,20 +498,26 @@ export default function MapScreen({ navigation }) {
           ? '<div class="overlay-scope overlay-scope-mine">내 폰에만</div>'
           : '<div class="overlay-scope overlay-scope-public">공용</div>';
       }
-      var content = '<div class="overlay' + (isAlert ? ' overlay-alert' : '') + (mine ? ' overlay-mine' : '') + '" id="ov_' + item.id + '">' +
-        (isAlert ? '<div class="overlay-type">⚠ ' + (typeNames[item.alertType] || '알림구역') + '</div>' : '') +
-        scopeLine +
-        '<div class="overlay-head">' +
-          '<div class="overlay-name">' + item.name + '</div>' +
-          '<div class="overlay-close" onclick="closeOverlay()">×</div>' +
+      var content = '<div class="ov-wrap">' +
+        '<div class="overlay' + (isAlert ? ' overlay-alert' : '') + (mine ? ' overlay-mine' : '') + '" id="ov_' + item.id + '">' +
+          (isAlert ? '<div class="overlay-type">⚠ ' + esc(typeNames[item.alertType] || '알림구역') + '</div>' : '') +
+          scopeLine +
+          '<div class="overlay-head">' +
+            '<div class="overlay-name">' + esc(item.name) + '</div>' +
+            '<div class="overlay-close" onclick="closeOverlay()">×</div>' +
+          '</div>' +
+          (item.memo ? '<div class="overlay-memo">' + esc(item.memo) + '</div>' : '') +
+          (item.memo2 ? '<div class="overlay-memo overlay-memo2">' + esc(item.memo2) + '</div>' : '') +
+          '<div class="overlay-hint">빠르게 두 번 탭 → 상세보기</div>' +
         '</div>' +
-        (item.memo ? '<div class="overlay-memo">' + item.memo + '</div>' : '') +
-        (item.memo2 ? '<div class="overlay-memo overlay-memo2">' + item.memo2 + '</div>' : '') +
-        '<div class="overlay-hint">빠르게 두 번 탭 → 상세보기</div>' +
-        '</div>';
+        '<div class="ov-tail"></div>' +
+      '</div>';
+      // yAnchor: 1 = 껍데기의 맨 아래가 핀 끝에 붙는다.
+      // 껍데기 아래쪽 50px가 투명 여백이라 상자는 핀 바로 위에 뜬다.
+      // (예전 2.2는 상자 높이의 2.2배만큼 위로 밀어올려서 엉뚱한 곳에 떴다)
       var overlay = new kakao.maps.CustomOverlay({
         position: new kakao.maps.LatLng(item.location.lat, item.location.lng),
-        content: content, yAnchor: 2.2, map: map
+        content: content, yAnchor: 1, map: map
       });
       currentOverlay = overlay;
 
@@ -469,8 +548,7 @@ export default function MapScreen({ navigation }) {
           var now = Date.now();
           if (now - lastTapAt < 400) {
             lastTapAt = 0;
-            overlay.setMap(null);
-            currentOverlay = null;
+            closeOverlay();
             window.ReactNativeWebView.postMessage(JSON.stringify({
               type: 'MARKER_CLICK', id: item.id, kind: isAlert ? 'alert' : 'building'
             }));
@@ -483,6 +561,7 @@ export default function MapScreen({ navigation }) {
 
     function closeOverlay() {
       if (currentOverlay) { currentOverlay.setMap(null); currentOverlay = null; }
+      clearPinSelection();   // 창을 닫으면 핀 색도 원래대로
     }
   </script>
 </body>
