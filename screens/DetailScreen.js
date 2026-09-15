@@ -816,10 +816,10 @@ const makeStyles = (c, font, space, radius, TAP) => StyleSheet.create({
   },
   imageBadgeText: { color: '#fff', ...font.tiny },
 
-  label: { ...font.sub, color: c.textSub, marginTop: space.lg, marginBottom: 6 },
+  label: { ...font.sub, fontWeight: '500', color: c.fieldLabel, marginTop: space.lg, marginBottom: 6 },
   input: {
-    backgroundColor: c.surface, borderWidth: StyleSheet.hairlineWidth,
-    borderColor: c.lineStrong, borderRadius: radius.md,
+    backgroundColor: c.field, borderWidth: 1.5,
+    borderColor: c.fieldBorder, borderRadius: radius.md,
     paddingHorizontal: space.md, paddingVertical: space.md,
     ...font.body, color: c.text,
   },

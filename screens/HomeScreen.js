@@ -1,8 +1,8 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View, Text, FlatList, TouchableOpacity, ScrollView,
-  StyleSheet, ActivityIndicator, RefreshControl, Alert
+  StyleSheet, ActivityIndicator, RefreshControl, Alert, PanResponder
 } from 'react-native';
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -71,6 +71,44 @@ export default function HomeScreen({ navigation }) {
   }), [buildings, tab]);
 
   const changeTab = (key) => { setTab(key); setShown(PAGE); };
+
+  // ── 좌우 스와이프로 탭 이동 ─────────────────────────────
+  //
+  //  이걸 넣는 이유가 두 가지다.
+  //   1) 원래 목적: 칩을 누르지 않고도 카테고리를 넘기고 싶다
+  //   2) 버그 수정: 목록을 가로로 밀면 상세 화면으로 들어가던 문제
+  //
+  //  2번은 세로로 밀면 FlatList가 "이건 스크롤이다" 하고 터치를 가져가
+  //  탭이 취소되는데, 가로로 밀면 가져갈 주인이 없어서 손을 뗄 때
+  //  그냥 탭으로 처리되던 것이었다.
+  //  아래에서 가로 제스처의 주인을 만들어주면 그 문제도 같이 사라진다.
+  //
+  //  PanResponder는 처음 만들어진 것이 계속 쓰이므로,
+  //  안에서 지금 상태를 읽으려면 ref로 꺼내야 한다.
+  const tabRef = useRef(tab);
+  const tabKeysRef = useRef([]);
+  useEffect(() => { tabRef.current = tab; }, [tab]);
+  tabKeysRef.current = tabs.map(t => t.key);
+
+  const pan = useRef(
+    PanResponder.create({
+      // Capture = 자식(목록·줄 버튼)보다 먼저 판단한다.
+      // 가로로 24 이상 + 가로가 세로의 2배 이상일 때만 내가 가져간다.
+      // 세로 스크롤은 세로 값이 훨씬 크므로 여기 걸리지 않는다.
+      onMoveShouldSetPanResponderCapture: (_evt, g) =>
+        Math.abs(g.dx) > 24 && Math.abs(g.dx) > Math.abs(g.dy) * 2,
+
+      onPanResponderRelease: (_evt, g) => {
+        const keys = tabKeysRef.current;
+        const i = keys.indexOf(tabRef.current);
+        if (i < 0) return;
+        // 왼쪽으로 밀면 다음 탭, 오른쪽으로 밀면 이전 탭.
+        // 양 끝에서는 아무 일도 하지 않는다.
+        if (g.dx < 0 && i < keys.length - 1) { setTab(keys[i + 1]); setShown(PAGE); }
+        else if (g.dx > 0 && i > 0) { setTab(keys[i - 1]); setShown(PAGE); }
+      },
+    })
+  ).current;
 
   // 스크롤 끝에 닿으면 조금 더 보여준다
   const loadMore = () => {
@@ -144,32 +182,35 @@ export default function HomeScreen({ navigation }) {
         })}
       </ScrollView>
 
-      {loading ? (
-        <ActivityIndicator size="large" color={c.accent} style={{ marginTop: 48 }} />
-      ) : (
-        <FlatList
-          data={filtered.slice(0, shown)}
-          keyExtractor={item => String(item.id)}
-          renderItem={renderItem}
-          onEndReached={loadMore}
-          onEndReachedThreshold={0.4}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              colors={[c.accent]}
-              tintColor={c.accent}
-            />
-          }
-          ListEmptyComponent={<Text style={s.empty}>{emptyText}</Text>}
-          ListFooterComponent={
-            shown < filtered.length
-              ? <ActivityIndicator color={c.textFaint} style={{ marginVertical: space.lg }} />
-              : <View style={{ height: 96 }} />
-          }
-          contentContainerStyle={{ paddingHorizontal: space.lg }}
-        />
-      )}
+      {/* 이 영역 안에서 좌우로 밀면 탭이 넘어간다 */}
+      <View style={{ flex: 1 }} {...pan.panHandlers}>
+        {loading ? (
+          <ActivityIndicator size="large" color={c.accent} style={{ marginTop: 48 }} />
+        ) : (
+          <FlatList
+            data={filtered.slice(0, shown)}
+            keyExtractor={item => String(item.id)}
+            renderItem={renderItem}
+            onEndReached={loadMore}
+            onEndReachedThreshold={0.4}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                colors={[c.accent]}
+                tintColor={c.accent}
+              />
+            }
+            ListEmptyComponent={<Text style={s.empty}>{emptyText}</Text>}
+            ListFooterComponent={
+              shown < filtered.length
+                ? <ActivityIndicator color={c.textFaint} style={{ marginVertical: space.lg }} />
+                : <View style={{ height: 96 }} />
+            }
+            contentContainerStyle={{ paddingHorizontal: space.lg }}
+          />
+        )}
+      </View>
 
       {/* 등록 버튼 */}
       <TouchableOpacity

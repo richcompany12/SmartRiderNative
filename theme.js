@@ -41,6 +41,13 @@ const light = {
   line: '#E5E3DC',        // 목록 구분선
   lineStrong: '#D3D1C7',  // 칩·입력칸 테두리
 
+  // 입력칸 전용.
+  // surface(흰색)를 그대로 쓰면 bg(아이보리)와 차이가 거의 없어서
+  // 입력칸이 화면에 녹아버린다. 테두리를 따로 진하게 둔다.
+  field: '#FFFFFF',       // 입력칸 배경
+  fieldBorder: '#9C9888', // 입력칸 테두리 — 확실히 보이라고 진하게 잡았다
+  fieldLabel: '#3E3D3A',  // 입력칸 위 라벨
+
   text: '#1A1A18',        // 본문
   textSub: '#5F5E5A',     // 부제, 아이콘
   textMuted: '#6E6C66',   // 비번, 보조 설명
@@ -71,6 +78,13 @@ const dark = {
 
   line: '#2A2E33',
   lineStrong: '#3A3F45',
+
+  // 입력칸 전용.
+  // 어두운 모드에서는 배경보다 한 단계 '밝은' 상자여야 칸으로 보인다.
+  // surface(#1A1D20)는 bg(#111315)와 너무 가까워서 칸이 안 보였다.
+  field: '#2A2F35',
+  fieldBorder: '#7A828C',
+  fieldLabel: '#D8D5CD',
 
   text: '#F4F2EC',
   textSub: '#A8A69F',

@@ -164,17 +164,17 @@ const makeStyles = (c, font, space, radius, TAP) => StyleSheet.create({
   },
 
   form: { width: '100%' },
-  label: { ...font.sub, color: c.textSub, marginBottom: 6, marginTop: space.md },
+  label: { ...font.sub, fontWeight: '500', color: c.fieldLabel, marginBottom: 6, marginTop: space.md },
   input: {
-    backgroundColor: c.surface, borderWidth: StyleSheet.hairlineWidth,
-    borderColor: c.lineStrong, borderRadius: radius.md,
+    backgroundColor: c.field, borderWidth: 1.5,
+    borderColor: c.fieldBorder, borderRadius: radius.md,
     paddingHorizontal: space.md, minHeight: TAP + 4,
     ...font.body, color: c.text,
   },
   pwWrap: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: c.surface, borderWidth: StyleSheet.hairlineWidth,
-    borderColor: c.lineStrong, borderRadius: radius.md,
+    backgroundColor: c.field, borderWidth: 1.5,
+    borderColor: c.fieldBorder, borderRadius: radius.md,
     paddingLeft: space.md, minHeight: TAP + 4,
   },
   pwInput: { flex: 1, ...font.body, color: c.text, paddingVertical: space.md },

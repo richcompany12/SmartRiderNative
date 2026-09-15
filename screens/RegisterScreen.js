@@ -563,12 +563,19 @@ const makeStyles = (c, font, space, radius, TAP) => StyleSheet.create({
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end',
     marginTop: space.lg, marginBottom: 6,
   },
-  label: { ...font.sub, color: c.textSub, marginTop: space.lg, marginBottom: 6 },
+  // 라벨이 흐리면 어느 칸의 설명인지 헷갈린다. 진하게, 살짝 굵게.
+  label: {
+    ...font.sub, fontWeight: '500', color: c.fieldLabel,
+    marginTop: space.lg, marginBottom: 6,
+  },
   counter: { ...font.tiny, color: c.textFaint, marginBottom: 7 },
 
+  // hairlineWidth(약 0.33px)는 기기에 따라 아예 렌더링되지 않는다.
+  // 배경도 화면과 거의 같았던 탓에 입력칸이라는 단서가 하나도 없었다.
+  // 배경 + 1px 테두리 둘 다로 칸을 만든다.
   input: {
-    backgroundColor: c.surface, borderWidth: StyleSheet.hairlineWidth,
-    borderColor: c.lineStrong, borderRadius: radius.md,
+    backgroundColor: c.field, borderWidth: 1.5,
+    borderColor: c.fieldBorder, borderRadius: radius.md,
     paddingHorizontal: space.md, paddingVertical: space.md,
     ...font.body, color: c.text,
   },
