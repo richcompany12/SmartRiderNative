@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   ScrollView, StyleSheet, Alert, ActivityIndicator,
@@ -7,6 +7,7 @@ import {
 import { getAlertPoint, updateAlertPoint, deleteAlertPoint } from '../firebaseDB';
 import { syncAlertsToService } from '../alertSync';
 import { useAuth } from '../AuthContext';
+import { useTheme } from '../theme';
 
 const ALERT_TYPES = [
   { key: 'rear', label: '후방카메라' },
@@ -20,6 +21,9 @@ const typeLabel = (key) =>
 
 export default function AlertDetailScreen({ navigation, route }) {
   const { alertId } = route.params;
+  const { c, font, space, radius, TAP } = useTheme();
+  const s = useMemo(() => makeStyles(c, font, space, radius, TAP), [c]);
+
   const [point, setPoint] = useState(null);
   const [editMode, setEditMode] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -99,160 +103,214 @@ export default function AlertDetailScreen({ navigation, route }) {
   };
 
   if (!point) return (
-    <View style={styles.loadingContainer}>
-      <ActivityIndicator size="large" color="#ef4444" />
+    <View style={s.loadingContainer}>
+      <ActivityIndicator size="large" color={c.danger} />
     </View>
   );
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1 }}
+      style={{ flex: 1, backgroundColor: c.bg }}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 340 }}>
-      <View style={styles.banner}>
-        <Text style={styles.bannerText}>🚨 {typeLabel(point.alertType)}</Text>
+    <ScrollView style={s.container} contentContainerStyle={{ paddingBottom: 340 }}>
+      <View style={s.banner}>
+        <Text style={s.bannerText}>{typeLabel(point.alertType)}</Text>
       </View>
 
       {saveMsg ? (
-        <View style={styles.saveMsg}>
-          <Text style={styles.saveMsgText}>{saveMsg}</Text>
+        <View style={s.saveMsg}>
+          <Text style={s.saveMsgText}>{saveMsg}</Text>
         </View>
       ) : null}
 
       {editMode ? (
         <>
-          <Text style={styles.label}>이름</Text>
+          <Text style={s.label}>이름</Text>
           <TextInput
-            style={styles.input}
+            style={s.input}
             value={point.name}
             onChangeText={v => setPoint(p => ({ ...p, name: v }))}
+            placeholderTextColor={c.textFaint}
           />
 
-          <Text style={styles.label}>알림 종류</Text>
-          <View style={styles.typeGrid}>
+          <Text style={s.label}>알림 종류</Text>
+          <View style={s.typeGrid}>
             {ALERT_TYPES.map(t => (
               <TouchableOpacity
                 key={t.key}
-                style={[styles.typeBtn, point.alertType === t.key && styles.typeBtnActive]}
+                style={[s.typeBtn, point.alertType === t.key && s.typeBtnActive]}
                 onPress={() => setPoint(p => ({ ...p, alertType: t.key }))}
               >
-                <Text style={[styles.typeBtnText, point.alertType === t.key && styles.typeBtnTextActive]}>
+                <Text style={[s.typeBtnText, point.alertType === t.key && s.typeBtnTextActive]}>
                   {t.label}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          <Text style={styles.label}>메모</Text>
+          <Text style={s.label}>메모</Text>
           <TextInput
-            style={styles.input}
+            style={s.input}
             value={point.memo || ''}
             onChangeText={v => setPoint(p => ({ ...p, memo: v }))}
             placeholder="예: 삼거리 신호등 옆"
-            placeholderTextColor="#94a3b8"
+            placeholderTextColor={c.textFaint}
           />
 
-          <TouchableOpacity style={styles.btnLocation} onPress={openLocationPicker}>
-            <Text style={styles.btnLocationText}>📍 위치 옮기기</Text>
+          <TouchableOpacity style={s.btnLocation} onPress={openLocationPicker}>
+            <Text style={s.btnLocationText}>위치 옮기기</Text>
           </TouchableOpacity>
           {point.location && (
-            <Text style={styles.coordText}>
+            <Text style={s.coordText}>
               위도: {point.location.lat?.toFixed(6)}, 경도: {point.location.lng?.toFixed(6)}
             </Text>
           )}
           {locationChanged && (
-            <View style={styles.locChangedBox}>
-              <Text style={styles.locChangedText}>위치가 변경되었습니다. 저장을 눌러 완료하세요.</Text>
+            <View style={s.locChangedBox}>
+              <Text style={s.locChangedText}>위치가 변경되었습니다. 저장을 눌러 완료하세요.</Text>
             </View>
           )}
 
-          <View style={styles.btnRow}>
-            <TouchableOpacity style={styles.btnSave} onPress={handleSave} disabled={saving}>
-              {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnSaveText}>저장</Text>}
+          <View style={s.btnRow}>
+            <TouchableOpacity style={s.btnSave} onPress={handleSave} disabled={saving}>
+              {saving ? <ActivityIndicator color={c.onAccent} /> : <Text style={s.btnSaveText}>저장</Text>}
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.btnCancel}
+              style={s.btnCancel}
               onPress={() => { setEditMode(false); setLocationChanged(false); }}
             >
-              <Text style={styles.btnCancelText}>취소</Text>
+              <Text style={s.btnCancelText}>취소</Text>
             </TouchableOpacity>
           </View>
         </>
       ) : (
         <>
-          <View style={styles.infoBox}>
-            <Text style={styles.infoLabel}>이름</Text>
-            <Text style={styles.infoValue}>{point.name}</Text>
+          <View style={s.infoBox}>
+            <Text style={s.infoLabel}>이름</Text>
+            <Text style={s.infoValue}>{point.name}</Text>
           </View>
-          <View style={styles.infoBox}>
-            <Text style={styles.infoLabel}>메모</Text>
-            <Text style={styles.infoValue}>{point.memo || '없음'}</Text>
+          <View style={s.infoBox}>
+            <Text style={s.infoLabel}>메모</Text>
+            <Text style={s.infoValue}>{point.memo || '없음'}</Text>
           </View>
           {point.location && (
-            <View style={styles.infoBox}>
-              <Text style={styles.infoLabel}>위치</Text>
-              <Text style={styles.infoValue}>
+            <View style={s.infoBox}>
+              <Text style={s.infoLabel}>위치</Text>
+              <Text style={s.infoValue}>
                 위도: {point.location.lat?.toFixed(6)}{'\n'}경도: {point.location.lng?.toFixed(6)}
               </Text>
             </View>
           )}
 
           {isAdmin ? (
-            <View style={styles.btnRow}>
-              <TouchableOpacity style={styles.btnEdit} onPress={() => setEditMode(true)}>
-                <Text style={styles.btnEditText}>수정</Text>
+            <View style={s.btnRow}>
+              <TouchableOpacity style={s.btnEdit} onPress={() => setEditMode(true)}>
+                <Text style={s.btnEditText}>수정</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.btnDelete} onPress={handleDelete}>
-                <Text style={styles.btnDeleteText}>삭제</Text>
+              <TouchableOpacity style={s.btnDelete} onPress={handleDelete}>
+                <Text style={s.btnDeleteText}>삭제</Text>
               </TouchableOpacity>
             </View>
           ) : (
-            <Text style={styles.readonly}>알림지점 수정은 관리자만 할 수 있습니다.</Text>
+            <Text style={s.readonly}>알림지점 수정은 관리자만 할 수 있습니다.</Text>
           )}
         </>
       )}
 
-      <TouchableOpacity style={styles.btnBack} onPress={() => navigation.goBack()}>
-        <Text style={styles.btnBackText}>← 뒤로</Text>
+      <TouchableOpacity style={s.btnBack} onPress={() => navigation.goBack()}>
+        <Text style={s.btnBackText}>← 뒤로</Text>
       </TouchableOpacity>
     </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc', padding: 16 },
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  banner: { backgroundColor: '#fee2e2', borderWidth: 1, borderColor: '#fca5a5', borderRadius: 10, padding: 14, marginBottom: 14 },
-  bannerText: { color: '#b91c1c', fontWeight: 'bold', fontSize: 18 },
-  saveMsg: { backgroundColor: '#dcfce7', padding: 10, borderRadius: 8, marginBottom: 12 },
-  saveMsgText: { color: '#166534', textAlign: 'center' },
-  label: { fontSize: 14, fontWeight: 'bold', color: '#374151', marginBottom: 4, marginTop: 12 },
-  input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, padding: 12, fontSize: 16, color: '#1e293b' },
-  typeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },
-  typeBtn: { backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#cbd5e1', paddingHorizontal: 14, minHeight: 48, justifyContent: 'center', borderRadius: 8 },
-  typeBtnActive: { backgroundColor: '#ef4444', borderColor: '#ef4444' },
-  typeBtnText: { fontSize: 14, color: '#475569', fontWeight: 'bold' },
-  typeBtnTextActive: { color: '#fff' },
-  infoBox: { backgroundColor: '#fff', borderRadius: 8, padding: 14, marginBottom: 8, elevation: 1 },
-  infoLabel: { fontSize: 12, color: '#94a3b8', marginBottom: 4 },
-  infoValue: { fontSize: 17, color: '#1e293b', fontWeight: '500' },
-  btnLocation: { backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#bfdbfe', padding: 14, borderRadius: 8, alignItems: 'center', marginTop: 16 },
-  btnLocationText: { color: '#2563eb', fontWeight: 'bold', fontSize: 15 },
-  coordText: { fontSize: 13, color: '#475569', marginTop: 8 },
-  locChangedBox: { backgroundColor: '#f1f5f9', padding: 10, borderRadius: 8, marginTop: 8 },
-  locChangedText: { fontSize: 13, color: '#64748b' },
-  btnRow: { flexDirection: 'row', gap: 12, marginTop: 16 },
-  btnSave: { flex: 1, backgroundColor: '#3b82f6', minHeight: 48, justifyContent: 'center', borderRadius: 8, alignItems: 'center' },
-  btnSaveText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-  btnCancel: { flex: 1, backgroundColor: '#e2e8f0', minHeight: 48, justifyContent: 'center', borderRadius: 8, alignItems: 'center' },
-  btnCancelText: { color: '#374151', fontWeight: 'bold', fontSize: 16 },
-  btnEdit: { flex: 1, backgroundColor: '#e2e8f0', minHeight: 48, justifyContent: 'center', borderRadius: 8, alignItems: 'center' },
-  btnEditText: { color: '#374151', fontWeight: 'bold', fontSize: 16 },
-  btnDelete: { flex: 1, backgroundColor: '#fee2e2', minHeight: 48, justifyContent: 'center', borderRadius: 8, alignItems: 'center' },
-  btnDeleteText: { color: '#dc2626', fontWeight: 'bold', fontSize: 16 },
-  readonly: { fontSize: 13, color: '#94a3b8', textAlign: 'center', marginTop: 16 },
-  btnBack: { backgroundColor: '#f1f5f9', padding: 14, borderRadius: 8, alignItems: 'center', marginTop: 16, marginBottom: 40 },
-  btnBackText: { color: '#475569', fontSize: 15 },
+const makeStyles = (c, font, space, radius, TAP) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.bg, padding: space.lg },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: c.bg },
+
+  // 강력알림은 danger를 쓰는 게 맞다. 진짜 위험 정보다.
+  banner: {
+    backgroundColor: c.dangerSoft, borderWidth: StyleSheet.hairlineWidth,
+    borderColor: c.danger, borderRadius: radius.md,
+    padding: space.lg, marginBottom: space.lg,
+  },
+  bannerText: { ...font.head, color: c.danger },
+
+  saveMsg: {
+    backgroundColor: c.accentSoft, padding: space.md,
+    borderRadius: radius.sm, marginBottom: space.md,
+  },
+  saveMsgText: { ...font.sub, color: c.accent, textAlign: 'center' },
+
+  label: { ...font.sub, fontWeight: '500', color: c.fieldLabel, marginBottom: space.xs, marginTop: space.md },
+  input: {
+    backgroundColor: c.field, borderWidth: StyleSheet.hairlineWidth,
+    borderColor: c.fieldBorder, borderRadius: radius.sm,
+    padding: space.md, ...font.body, color: c.text,
+  },
+
+  typeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, marginTop: space.xs },
+  typeBtn: {
+    backgroundColor: c.surfaceSoft, borderWidth: StyleSheet.hairlineWidth,
+    borderColor: c.line, paddingHorizontal: space.lg,
+    minHeight: TAP, justifyContent: 'center', borderRadius: radius.sm,
+  },
+  typeBtnActive: { backgroundColor: c.danger, borderColor: c.danger },
+  typeBtnText: { ...font.sub, fontWeight: '500', color: c.textSub },
+  typeBtnTextActive: { color: '#FFFFFF' },
+
+  infoBox: {
+    backgroundColor: c.surface, borderRadius: radius.md, padding: space.lg,
+    marginBottom: space.sm,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: c.line,
+  },
+  infoLabel: { ...font.tiny, color: c.textFaint, marginBottom: space.xs },
+  infoValue: { ...font.body, fontWeight: '500', color: c.text, lineHeight: 23 },
+
+  btnLocation: {
+    backgroundColor: c.surfaceSoft, borderWidth: StyleSheet.hairlineWidth,
+    borderColor: c.lineStrong, minHeight: TAP, justifyContent: 'center',
+    borderRadius: radius.sm, alignItems: 'center', marginTop: space.lg,
+  },
+  btnLocationText: { ...font.body, fontWeight: '500', color: c.publicColor },
+  coordText: { ...font.sub, color: c.textMuted, marginTop: space.sm },
+  locChangedBox: {
+    backgroundColor: c.warnSoft, padding: space.md,
+    borderRadius: radius.sm, marginTop: space.sm,
+  },
+  locChangedText: { ...font.sub, color: c.warn, lineHeight: 20 },
+
+  btnRow: { flexDirection: 'row', gap: space.md, marginTop: space.lg },
+  btnSave: {
+    flex: 1, backgroundColor: c.accent, minHeight: TAP,
+    justifyContent: 'center', borderRadius: radius.sm, alignItems: 'center',
+  },
+  btnSaveText: { ...font.body, fontWeight: '500', color: c.onAccent },
+  btnCancel: {
+    flex: 1, backgroundColor: c.surfaceSoft, minHeight: TAP,
+    justifyContent: 'center', borderRadius: radius.sm, alignItems: 'center',
+    borderWidth: StyleSheet.hairlineWidth, borderColor: c.lineStrong,
+  },
+  btnCancelText: { ...font.body, fontWeight: '500', color: c.textSub },
+  btnEdit: {
+    flex: 1, backgroundColor: c.surfaceSoft, minHeight: TAP,
+    justifyContent: 'center', borderRadius: radius.sm, alignItems: 'center',
+    borderWidth: StyleSheet.hairlineWidth, borderColor: c.lineStrong,
+  },
+  btnEditText: { ...font.body, fontWeight: '500', color: c.textSub },
+  btnDelete: {
+    flex: 1, backgroundColor: c.dangerSoft, minHeight: TAP,
+    justifyContent: 'center', borderRadius: radius.sm, alignItems: 'center',
+  },
+  btnDeleteText: { ...font.body, fontWeight: '500', color: c.danger },
+
+  readonly: { ...font.sub, color: c.textFaint, textAlign: 'center', marginTop: space.lg },
+  btnBack: {
+    backgroundColor: c.surfaceSoft, minHeight: TAP, justifyContent: 'center',
+    borderRadius: radius.sm, alignItems: 'center',
+    marginTop: space.lg, marginBottom: 40,
+  },
+  btnBackText: { ...font.body, color: c.textSub },
 });
