@@ -8,8 +8,10 @@ import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Sidebar from './Sidebar';
 import BuildingRow from './BuildingRow';
+import AlertRow from './AlertRow';
 import { copyBuildingMemo } from '../copyUtil';
 import { getCachedBuildings } from '../buildingsCache';
+import { getAllAlertPoints } from '../firebaseDB';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../theme';
 
@@ -24,6 +26,7 @@ export default function HomeScreen({ navigation }) {
   const s = useMemo(() => makeStyles(c, font, space, radius, TAP), [c]);
 
   const [buildings, setBuildings] = useState([]);
+  const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState('fav');       // 기본은 즐겨찾기
@@ -32,15 +35,26 @@ export default function HomeScreen({ navigation }) {
 
   const load = async (isRefresh = false) => {
     if (!isRefresh) setLoading(true);
+
+    // 건물이 본체다. 이것만은 반드시 살린다.
     try {
       const list = await getCachedBuildings(isRefresh);
       setBuildings([...list].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)));
     } catch (e) {
-      Alert.alert('오류', '건물 데이터를 불러오지 못했습니다.');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+      Alert.alert('오류', '건물 데이터를 불러오지 못했습니다.\n' + (e?.message || ''));
     }
+
+    // 알림지점은 곁다리다. 실패해도 건물 목록은 그대로 보여야 한다.
+    try {
+      const aList = await getAllAlertPoints();
+      setAlerts([...aList].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)));
+    } catch (e) {
+      setAlerts([]);
+      console.log('알림지점 로드 실패:', e?.message);
+    }
+
+    setLoading(false);
+    setRefreshing(false);
   };
 
   // 화면에 돌아올 때마다 다시 읽는다.
@@ -49,26 +63,33 @@ export default function HomeScreen({ navigation }) {
   const onRefresh = () => { setRefreshing(true); load(true); };
 
   // ── 탭 ────────────────────────────────────────────────
+  // 사진 탭을 빼고 강력알림을 넣었다.
+  // 사진은 "사진 있는 건물만 보기"였는데 따로 볼 일이 없었고,
+  // 알림지점은 지도에만 있어서 목록으로는 확인할 길이 없었다.
   const tabs = [
     { key: 'fav', label: '즐겨찾기' },
     { key: 'public', label: '공용' },
-    ...(isAdmin ? [{ key: 'photo', label: '사진' }] : []),
+    { key: 'alert', label: '강력알림' },
     { key: 'all', label: '전체' },
   ];
 
   const counts = useMemo(() => ({
     fav: buildings.filter(b => b.isFav).length,
     public: buildings.filter(b => b.scope !== 'personal').length,
-    photo: buildings.filter(b => b.images?.length > 0).length,
+    alert: alerts.length,
     all: buildings.length,
-  }), [buildings]);
+  }), [buildings, alerts]);
 
-  const filtered = useMemo(() => buildings.filter(b => {
-    if (tab === 'fav') return b.isFav;
-    if (tab === 'public') return b.scope !== 'personal';
-    if (tab === 'photo') return b.images?.length > 0;
-    return true;
-  }), [buildings, tab]);
+  // 강력알림 탭일 때만 다른 배열을 돌려준다.
+  // 아래 FlatList·더보기 코드는 filtered만 보므로 고칠 게 없다.
+  const filtered = useMemo(() => {
+    if (tab === 'alert') return alerts;
+    return buildings.filter(b => {
+      if (tab === 'fav') return b.isFav;
+      if (tab === 'public') return b.scope !== 'personal';
+      return true;
+    });
+  }, [buildings, alerts, tab]);
 
   const changeTab = (key) => { setTab(key); setShown(PAGE); };
 
@@ -115,18 +136,28 @@ export default function HomeScreen({ navigation }) {
     if (shown < filtered.length) setShown(n => n + PAGE);
   };
 
-  const renderItem = ({ item }) => (
-    <BuildingRow
-      item={item}
-      onPress={() => navigation.navigate('Detail', { buildingId: item.id })}
-      onCopy={() => copyBuildingMemo(item)}
-    />
-  );
+  const renderItem = ({ item }) => {
+    if (tab === 'alert') {
+      return (
+        <AlertRow
+          item={item}
+          onPress={() => navigation.navigate('AlertDetail', { alertId: item.id })}
+        />
+      );
+    }
+    return (
+      <BuildingRow
+        item={item}
+        onPress={() => navigation.navigate('Detail', { buildingId: item.id })}
+        onCopy={() => copyBuildingMemo(item)}
+      />
+    );
+  };
 
   const emptyText = {
     fav: '즐겨찾기한 건물이 없습니다.\n건물 상세에서 ★ 를 눌러 추가하세요.',
     public: '공용 건물이 없습니다.',
-    photo: '사진이 있는 건물이 없습니다.',
+    alert: '등록된 강력알림 지점이 없습니다.',
     all: '등록된 건물이 없습니다.',
   }[tab];
 

@@ -25,12 +25,22 @@ const distanceKm = (lat1, lng1, lat2, lng2) => {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
+// 좌표가 쓸 만한지 확인해서 숫자로 돌려준다. 없거나 깨졌으면 null.
+// 웹앱 시절에 좌표 없이 넣은 데이터를 여기서 걸러낸다.
+const readLatLng = (item) => {
+  if (!item || !item.location) return null;
+  const lat = parseFloat(item.location.lat);
+  const lng = parseFloat(item.location.lng);
+  if (isNaN(lat) || isNaN(lng)) return null;
+  return { lat, lng };
+};
+
 export default function MapScreen({ navigation }) {
   const webViewRef = useRef(null);
   const [buildings, setBuildings] = useState([]);
   const [alertPoints, setAlertPoints] = useState([]);
   const [myLocation, setMyLocation] = useState(null);
-  const [shown, setShown] = useState({ mine: 0, pub: 0, total: 0 });
+  const [shown, setShown] = useState({ mine: 0, pub: 0, alert: 0 });
 
   // 팝업이 이미 떠 있으면 두 번째 요청을 무시하기 위한 잠금장치
   const alertOpenRef = useRef(false);
@@ -74,26 +84,29 @@ export default function MapScreen({ navigation }) {
   }, [myLocation, buildings, alertPoints]);
 
   const sendToMap = () => {
-    const near = buildings.filter(b => {
-      if (!b.location) return false;
-      const lat = parseFloat(b.location.lat);
-      const lng = parseFloat(b.location.lng);
-      if (isNaN(lat) || isNaN(lng)) return false;
-      return distanceKm(myLocation.lat, myLocation.lng, lat, lng) <= MAP_RADIUS_KM;
-    });
+    // 지도에 핀이 실제로 찍히는 조건.
+    // 건물이든 알림지점이든 똑같은 잣대를 쓴다.
+    const inRange = (item) => {
+      const p = readLatLng(item);
+      if (!p) return false;
+      return distanceKm(myLocation.lat, myLocation.lng, p.lat, p.lng) <= MAP_RADIUS_KM;
+    };
 
-    // 배지에 쓸 숫자
+    const near = buildings.filter(inRange);
+    const nearAlerts = alertPoints.filter(inRange);
+
+    // 배지 = 화면에 찍힌 핀 개수. 원본 배열 길이를 쓰지 않는다.
     setShown({
-      mine: near.filter(b => b.scope === 'personal').length,
-      pub: near.filter(b => b.scope !== 'personal').length,
-      total: buildings.length,
+      mine:  near.filter(b => b.scope === 'personal').length,
+      pub:   near.filter(b => b.scope !== 'personal').length,
+      alert: nearAlerts.length,
     });
 
     const msg = JSON.stringify({
       type: 'INIT',
       myLocation,
       buildings: near,
-      alertPoints: alertPoints.filter(a => a.location),
+      alertPoints: nearAlerts,
     });
     webViewRef.current?.postMessage(msg);
   };
@@ -255,7 +268,7 @@ export default function MapScreen({ navigation }) {
 </head>
 <body>
   <div id="map"></div>
-  <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_API_KEY}&autoload=false"></script>
+  <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_API_KEY}&autoload=false&libraries=clusterer"></script>
   <script>
     window.onerror = function(msg, src, line) {
       window.ReactNativeWebView.postMessage(JSON.stringify({ type:'JS_ERROR', msg: msg + ' @' + line }));
@@ -270,6 +283,7 @@ export default function MapScreen({ navigation }) {
     // ★ INIT이 여러 번 와도 리스너가 쌓이지 않도록 데이터는 전역에 보관한다
     var mapBuildings = [];
     var placedMarkers = [];   // 다시 그릴 때 지우기 위해 보관
+    var clusterer = null;     // ★ 건물 마커를 뭉쳐주는 녀석
 
     // ── 핀 색 구분 ──────────────────────────────────
     //  청록 = 내 폰에만 있는 건물 / 파랑 = 공용 건물
@@ -343,6 +357,16 @@ export default function MapScreen({ navigation }) {
       // ★ 롱프레스 리스너는 여기서 딱 한 번만 등록한다.
       //    initMap 안에 두면 INIT이 올 때마다 리스너가 쌓여서
       //    한 번 눌렀는데 팝업이 여러 장 뜬다. (이번 버그의 원인)
+            // ★ 마커 뭉치기.
+      //    minLevel 5 = 어느 정도 이상 줌아웃했을 때만 뭉친다.
+      //    가까이 보고 있을 때는 지금처럼 핀 하나하나가 그대로 보인다.
+      clusterer = new kakao.maps.MarkerClusterer({
+        map: map,
+        averageCenter: true,
+        minLevel: 5,
+        gridSize: 70,
+      });
+
       setupLongPress();
 
       // 빈 지도를 톡 치면 메모창이 닫히고 핀 색도 돌아온다.
@@ -392,6 +416,7 @@ export default function MapScreen({ navigation }) {
       // 마커를 통째로 지우므로 선택 표시도 같이 초기화한다
       selMarker = null;
       selOriginalImg = null;
+      if (clusterer) clusterer.clear();          // ★ 뭉쳐둔 건물 마커 비우기
       placedMarkers.forEach(function(m) { m.setMap(null); });
       placedMarkers = [];
     }
@@ -418,20 +443,23 @@ export default function MapScreen({ navigation }) {
       // ★ 기존 마커를 지우고 다시 그린다 (안 지우면 핀이 겹겹이 쌓인다)
       clearMarkers();
 
-      // 건물 마커
+      // 건물 마커 — 하나씩 지도에 붙이지 않고 클러스터러에 맡긴다
+      var buildingMarkers = [];
       mapBuildings.forEach(function(b) {
         var normalImg = pinImage(isMineItem(b));
         var marker = new kakao.maps.Marker({
           position: new kakao.maps.LatLng(b.location.lat, b.location.lng),
-          map: map, title: b.name,
+          title: b.name,
           image: normalImg
         });
         kakao.maps.event.addListener(marker, 'click', function() {
           selectPin(marker, normalImg, PIN_SELECTED);
           showOverlay(b, false);
         });
+        buildingMarkers.push(marker);
         placedMarkers.push(marker);
       });
+      if (clusterer) clusterer.addMarkers(buildingMarkers);
 
       // 알림 마커
       (data.alertPoints || []).forEach(function(a) {
@@ -586,8 +614,10 @@ export default function MapScreen({ navigation }) {
           <Text style={styles.legendText}>내 폰 {shown.mine}</Text>
           <View style={[styles.dot, { backgroundColor: '#185FA5', marginLeft: 10 }]} />
           <Text style={styles.legendText}>공용 {shown.pub}</Text>
+          <View style={[styles.dot, { backgroundColor: '#DC2626', marginLeft: 10 }]} />
+          <Text style={styles.legendText}>알림 {shown.alert}</Text>
         </View>
-        <Text style={styles.legendHint}>주변 {MAP_RADIUS_KM}km · 전체 {shown.total}건</Text>
+        <Text style={styles.legendHint}>주변 {MAP_RADIUS_KM}km</Text>
       </View>
 
       {/* 내 위치 버튼 */}
