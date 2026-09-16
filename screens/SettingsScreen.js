@@ -457,6 +457,14 @@ export default function SettingsScreen({ navigation }) {
       {/* 기타 */}
       <Text style={s.section}>기타</Text>
       <View style={s.card}>
+        {/* ★ 새 줄 */}
+        <TouchableOpacity
+          style={s.plainBtn}
+          onPress={() => navigation.navigate('Permission', { fromSettings: true })}
+        >
+          <Text style={s.plainBtnText}>🔐 권한 다시 확인</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity style={s.plainBtn} onPress={onBatteryOptimization}>
           <Text style={s.plainBtnText}>🔋 배터리 최적화 예외 설정</Text>
         </TouchableOpacity>

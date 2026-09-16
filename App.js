@@ -13,6 +13,7 @@ import SettingsScreen from './screens/SettingsScreen';
 import AlertDetailScreen from './screens/AlertDetailScreen';
 import SuggestScreen from './screens/SuggestScreen';
 import SuggestAdminScreen from './screens/SuggestAdminScreen';
+import PermissionScreen from './screens/PermissionScreen'; 
 import { navigationRef } from './navigationRef';
 
 const Stack = createNativeStackNavigator();
@@ -35,6 +36,7 @@ function AppNavigator() {
             <Stack.Screen name="AlertDetail" component={AlertDetailScreen} options={{ title: '강력 알림 지점' }} />
             <Stack.Screen name="Suggest" component={SuggestScreen} options={{ headerShown: false }} />
             <Stack.Screen name="SuggestAdmin" component={SuggestAdminScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="Permission" component={PermissionScreen} options={{ headerShown: false }} />
           </>
         ) : (
           <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />

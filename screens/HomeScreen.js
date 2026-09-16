@@ -14,6 +14,8 @@ import { getCachedBuildings } from '../buildingsCache';
 import { getAllAlertPoints } from '../firebaseDB';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../theme';
+import AsyncStorage from '@react-native-async-storage/async-storage';           // ★ 새 줄
+import { PERMISSION_SEEN_KEY } from './PermissionScreen';                        // ★ 새 줄
 
 // 한 번에 몇 개씩 더 불러올지.
 // 1000개를 한꺼번에 그리면 스크롤이 끊긴다.
@@ -59,6 +61,17 @@ export default function HomeScreen({ navigation }) {
 
   // 화면에 돌아올 때마다 다시 읽는다.
   useFocusEffect(useCallback(() => { load(); }, []));
+
+  // ★ 권한 안내를 딱 한 번만 띄운다.
+  //   AsyncStorage에 표시가 없으면 아직 안 본 사람이다.
+  useEffect(() => {
+    (async () => {
+      try {
+        const seen = await AsyncStorage.getItem(PERMISSION_SEEN_KEY);
+        if (!seen) navigation.navigate('Permission');
+      } catch (e) {}
+    })();
+  }, []);
 
   const onRefresh = () => { setRefreshing(true); load(true); };
 
