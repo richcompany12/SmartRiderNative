@@ -109,15 +109,16 @@ export default function ProximityNotifier() {
   };
 
   const setup = async () => {
-    const { status: notifStatus } = await Notifications.requestPermissionsAsync();
-    console.log('[PROX] 알림권한', notifStatus);
-
-    const { status: fgStatus } = await Location.requestForegroundPermissionsAsync();
-    console.log('[PROX] 전경위치권한', fgStatus);
-    if (fgStatus !== 'granted') return;
-
-    const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
-    console.log('[PROX] 배경위치권한', bgStatus);
+    // ★ 여기서는 권한을 "요청"하지 않고 "확인"만 한다.
+    //   요청은 PermissionScreen이 전담한다.
+    //   구글 백그라운드 위치 심사는 "설명이 요청보다 먼저"를 요구하는데,
+    //   여기서 팝업을 띄우면 안내 화면보다 먼저 떠서 순서가 뒤집힌다.
+    const fg = await Location.getForegroundPermissionsAsync();          // ★ 새 줄
+    console.log('[PROX] 전경위치권한(확인)', fg.status);                 // ★ 새 줄
+    if (!fg.granted) {                                                  // ★ 새 줄
+      console.log('[PROX] 위치권한 없음 - 서비스 시작 보류');            // ★ 새 줄
+      return;                                                           // ★ 새 줄
+    }                                                                   // ★ 새 줄
 
     try {
       const has = await ProximityOverlayModule?.hasPermission();
@@ -200,9 +201,19 @@ export default function ProximityNotifier() {
     });
 
     // 앱으로 돌아올 때마다 건물 목록 갱신 (너무 잦으면 건너뜀)
-    const appStateSub = AppState.addEventListener('change', (nextState) => {
+    const appStateSub = AppState.addEventListener('change', async (nextState) => {   // ★ async 추가
       if (nextState !== 'active') return;
       if (Date.now() - lastSyncAt < 30000) return;
+
+      // ★ 여기부터 새 블록
+      // 권한이 없으면 Kotlin 서비스가 뜰 수 없다.
+      // 그래도 인텐트를 쏘면 서비스가 startForeground 없이 살아나 죽는다.
+      try {
+        const fg = await Location.getForegroundPermissionsAsync();
+        if (!fg.granted) return;
+      } catch (e) { return; }
+      // ★ 새 블록 끝
+
       syncBuildings('앱 복귀');
       syncAlerts('앱 복귀');
     });

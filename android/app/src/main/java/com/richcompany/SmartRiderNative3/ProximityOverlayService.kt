@@ -119,6 +119,7 @@ class ProximityOverlayService : Service() {
     private val healthChecker = object : Runnable {
         override fun run() {
             updateNotification()
+            ensureFloatingButton()                    // ★ 새 줄
             handler.postDelayed(this, CHECK_INTERVAL)
         }
     }
@@ -178,6 +179,16 @@ class ProximityOverlayService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // ★ 여기부터 새 블록
+        // onCreate에서 막아도 인텐트가 또 오면 서비스가 되살아난다.
+        // startForeground를 못 부른 채 5초가 지나면 시스템이 프로세스를 죽인다.
+        if (!hasLocationPermission()) {
+            android.util.Log.d(TAG, "위치 권한 없음 - 명령 무시")
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        // ★ 새 블록 끝
+
         when (intent?.action) {
             ACTION_SHOW_TOAST -> {
                 val json = intent.getStringExtra(EXTRA_PAYLOAD)
@@ -213,6 +224,17 @@ class ProximityOverlayService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+
+        // ★ 여기부터 새 블록
+        // 권한 없이 살아나면 startForeground에서 프로세스가 죽는다.
+        // 조용히 물러난다. PermissionScreen에서 허용하면 다시 켜진다.
+        if (!hasLocationPermission()) {
+            android.util.Log.d(TAG, "위치 권한 없음 - 서비스 시작 취소")
+            stopSelf()
+            return
+        }
+        // ★ 새 블록 끝
+
         createChannel()
         notifManager = getSystemService(NotificationManager::class.java)
 
@@ -608,15 +630,43 @@ class ProximityOverlayService : Service() {
             return
         }
         try {
+            val uri = android.net.Uri.parse(
+                "android.resource://" + packageName + "/" + R.raw.smartrider4
+            )
+            val mp = android.media.MediaPlayer()
+            // 알람 계통으로 내보낸다. 헬멧 쓰고 달리는 중이 기준이므로
+            // 일반 알림음 볼륨에 묻히면 의미가 없다.
+            mp.setAudioAttributes(
+                android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_ALARM)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+            )
+            mp.setDataSource(applicationContext, uri)
+            mp.setOnCompletionListener { it.release() }
+            mp.setOnErrorListener { p, _, _ ->
+                try { p.release() } catch (e: Exception) {}
+                playFallbackSound()
+                true
+            }
+            mp.prepare()
+            mp.start()
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "알림음 재생 실패: " + e.message)
+            playFallbackSound()
+        }
+    }
+
+    // 음원이 없거나 깨졌을 때의 안전망. 예전 동작 그대로.
+    private fun playFallbackSound() {
+        try {
             val uri = android.media.RingtoneManager
                 .getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION) ?: return
             val ringtone = android.media.RingtoneManager.getRingtone(applicationContext, uri)
             ringtone?.play()
-            // 두 번 울려서 일반 알림과 구분되게
-            handler.postDelayed({ try { ringtone?.play() } catch (e: Exception) {} }, 700)
             handler.postDelayed({ try { ringtone?.stop() } catch (e: Exception) {} }, 4000)
         } catch (e: Exception) {
-            android.util.Log.e(TAG, "알림음 재생 실패: " + e.message)
+            android.util.Log.e(TAG, "기본 알림음도 실패: " + e.message)
         }
     }
 
@@ -776,8 +826,52 @@ class ProximityOverlayService : Service() {
         android.util.Log.d(TAG, "플로팅 버튼 " + if (on) "켜짐" else "꺼짐")
     }
 
+    // ★ 여기부터 새 함수 2개 ─────────────────────────────
+
+    /**
+     * 개발문서 4장 해결.
+     * 오버레이 권한이 없으면 addView가 실패하는데 JS는 그걸 모른다.
+     * 나중에 권한을 켜도 스스로 다시 그리지 않아
+     * "설정엔 켜짐인데 버튼이 없다"가 된다.
+     * healthChecker가 15초마다 불러서 자동 복구한다.
+     */
+    private fun ensureFloatingButton() {
+        if (!floatingEnabled) return        // 사용자가 끈 상태면 건드리지 않는다
+        if (floatingView != null) return    // 이미 떠 있으면 할 일 없음
+        if (!hasOverlay()) return           // 아직 권한 없음. 다음 바퀴에 다시 본다
+        android.util.Log.d(TAG, "권한 확인됨 - 플로팅 버튼 자동 재시도")
+        showFloatingButton()
+    }
+
+    private fun hasOverlay(): Boolean =
+        android.provider.Settings.canDrawOverlays(this)
+
+    // ★ 여기부터 새 함수
+    /**
+     * 위치 권한이 없는데 FGS_TYPE_LOCATION으로 startForeground를 하면
+     * 안드로이드가 SecurityException으로 프로세스를 죽인다. (targetSdk 34+)
+     * 권한 화면을 통과하기 전에는 이 상태가 정상적으로 존재하므로
+     * onCreate에서 반드시 먼저 확인한다.
+     */
+    private fun hasLocationPermission(): Boolean {
+        val fine = ContextCompat.checkSelfPermission(
+            this, android.Manifest.permission.ACCESS_FINE_LOCATION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        val coarse = ContextCompat.checkSelfPermission(
+            this, android.Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        return fine || coarse
+    }
+    // ★ 새 함수 끝
+
+    // ★ 새 함수 끝 ──────────────────────────────────────
+
     private fun showFloatingButton() {
         if (floatingView != null) return
+        if (!hasOverlay()) {                                          // ★ 새 줄
+            android.util.Log.d(TAG, "오버레이 권한 없음 - 표시 보류")   // ★ 새 줄
+            return                                                    // ★ 새 줄
+        }                                                             // ★ 새 줄
         try {
             // 앱의 FAB와 같은 얼굴로 맞춘다. 딥그린 원 + 흰 심볼.
             // 배민 화면 위에 상시 떠 있으므로 평소에는 70%로 물러나 있다가

@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View, Text, TouchableOpacity, ScrollView,
-  StyleSheet, Linking, AppState,
+  StyleSheet, Linking, AppState, NativeModules,     // ★ NativeModules 추가
 } from 'react-native';
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,6 +25,8 @@ import { useTheme } from '../theme';
  * 코틀린에 hasOverlayPermission()을 추가하면 그때 체크가 붙는다.
  */
 
+const { ProximityOverlayModule } = NativeModules;     // ★ 새 줄
+
 export const PERMISSION_SEEN_KEY = 'permission_intro_seen';
 
 export default function PermissionScreen({ navigation, route }) {
@@ -37,6 +39,7 @@ export default function PermissionScreen({ navigation, route }) {
 
   const [loc, setLoc] = useState('unknown');    // 'ok' | 'partial' | 'no'
   const [noti, setNoti] = useState('unknown');  // 'ok' | 'no'
+  const [ovl, setOvl] = useState('unknown');    // ★ 새 줄 — 오버레이
 
   const check = async () => {
     try {
@@ -51,6 +54,13 @@ export default function PermissionScreen({ navigation, route }) {
       const n = await Notifications.getPermissionsAsync();
       setNoti(n.granted ? 'ok' : 'no');
     } catch (e) { setNoti('no'); }
+
+    // ★ 여기부터 새 블록
+    try {
+      const ok = await ProximityOverlayModule.hasPermission();
+      setOvl(ok ? 'ok' : 'no');
+    } catch (e) { setOvl('no'); }
+    // ★ 새 블록 끝
   };
 
   // 설정 앱에 다녀오면 상태가 바뀌어 있다. 돌아올 때마다 다시 본다.
@@ -82,10 +92,29 @@ export default function PermissionScreen({ navigation, route }) {
     check();
   };
 
-  const openOverlay = () => { Linking.openSettings().catch(() => {}); };
+    // 앱 정보 화면이 아니라 "다른 앱 위에 표시" 화면으로 바로 보낸다.
+  // 돌아오면 AppState 리스너가 알아서 다시 검사한다.
+  const openOverlay = async () => {
+    try {
+      await ProximityOverlayModule.requestPermission();
+    } catch (e) {
+      Linking.openSettings().catch(() => {});   // 실패 시 예전 방식으로 폴백
+    }
+  };
 
   const done = async () => {
     try { await AsyncStorage.setItem(PERMISSION_SEEN_KEY, '1'); } catch (e) {}
+
+    // ★ 여기서부터 새 블록
+    // 권한을 방금 받았으니 Kotlin 서비스를 켠다.
+    // ProximityNotifier의 setup()은 앱 실행당 1회라 다시 돌지 않는다.
+    try {
+      if (loc !== 'no' && ovl === 'ok') {
+        await ProximityOverlayModule.startService();
+      }
+    } catch (e) {}
+    // ★ 새 블록 끝
+
     if (fromSettings) navigation.goBack();
     else navigation.replace('Home');
   };
@@ -153,7 +182,7 @@ export default function PermissionScreen({ navigation, route }) {
             '배달 앱을 보는 중에도 건물 정보가 위에 뜨려면 필요합니다. ' +
             '설정 화면에서 "다른 앱 위에 표시"를 찾아 켜주세요.'
           }
-          state="no"
+          state={ovl}
           btnText="설정 열기"
           onPress={openOverlay}
         />
@@ -167,9 +196,12 @@ export default function PermissionScreen({ navigation, route }) {
           onPress={askNoti}
         />
 
-        <Text style={s.hint}>
-          "다른 앱 위에 표시"는 이미 켜두셨다면 그냥 넘어가셔도 됩니다.
-        </Text>
+         {ovl !== 'ok' && (
+          <Text style={s.hint}>
+            이 권한만 팝업으로 물어볼 수 없어 설정 화면으로 이동합니다.
+            목록에서 스마트라이더를 찾아 켜주세요.
+          </Text>
+        )}
       </ScrollView>
 
       <View style={[s.footer, { paddingBottom: insets.bottom + space.lg }]}>

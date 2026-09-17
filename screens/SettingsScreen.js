@@ -25,10 +25,10 @@ const RADIUS_OPTIONS = [20, 30, 50];
 const ALERT_DISTANCE_OPTIONS = [50, 100, 200];
 
 const ALERT_TYPE_LIST = [
-  { key: 'rear', label: '후방카메라', hint: '이륜차가 주로 걸리는 쪽' },
-  { key: 'front', label: '전방카메라', hint: '이륜차는 앞번호판이 없어 잘 안 걸림' },
-  { key: 'parking', label: '주차단속', hint: null },
-  { key: 'etc', label: '기타', hint: null },
+  { key: 'rear',    label: '후방카메라', hint: '이륜차가 주로 걸리는 쪽' },
+  { key: 'front',   label: '전방카메라', hint: '이륜차는 앞번호판이 없어 잘 안 걸림', soon: true },  // ★
+  { key: 'parking', label: '주차단속', hint: null, soon: true },                                   // ★
+  { key: 'etc',     label: '기타', hint: null, soon: true },                                       // ★
 ];
 
 // 값 여러 개 중 하나를 고르는 줄
@@ -55,23 +55,28 @@ function ChoiceRow({ label, hint, options, value, suffix, onSelect, s }) {
 }
 
 // 켜기/끄기 두 칸짜리 줄
-function ToggleRow({ label, hint, value, onChange, s }) {
+// disabled면 흐리게 + 제목 옆에 (준비중) + 눌러도 반응 없음
+function ToggleRow({ label, hint, value, onChange, s, disabled }) {
+  const on  = !disabled && value;
+  const off = !disabled && !value;
   return (
-    <View style={s.row}>
-      <Text style={s.rowLabel}>{label}</Text>
+    <View style={[s.row, disabled && s.rowDisabled]}>
+      <Text style={s.rowLabel}>{label}{disabled ? ' (준비중)' : ''}</Text>
       {hint ? <Text style={s.rowHint}>{hint}</Text> : null}
       <View style={s.choiceGroup}>
         <TouchableOpacity
-          style={[s.choice, !value && s.choiceOff]}
+          style={[s.choice, off && s.choiceOff]}
+          disabled={disabled}
           onPress={() => onChange(false)}
         >
-          <Text style={[s.choiceText, !value && s.choiceTextActive]}>끔</Text>
+          <Text style={[s.choiceText, off && s.choiceTextActive]}>끔</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[s.choice, value && s.choiceActive]}
+          style={[s.choice, on && s.choiceActive]}
+          disabled={disabled}
           onPress={() => onChange(true)}
         >
-          <Text style={[s.choiceText, value && s.choiceTextActive]}>켬</Text>
+          <Text style={[s.choiceText, on && s.choiceTextActive]}>켬</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -368,10 +373,11 @@ export default function SettingsScreen({ navigation }) {
 
         {ALERT_TYPE_LIST.map(t => (
           <ToggleRow
-          s={s}
+            s={s}
             key={t.key}
             label={t.label}
             hint={t.hint}
+            disabled={t.soon === true}                       // ★ 새 줄
             value={settings.alertTypes[t.key] !== false}
             onChange={(on) => onAlertType(t.key, on)}
           />
@@ -457,7 +463,6 @@ export default function SettingsScreen({ navigation }) {
       {/* 기타 */}
       <Text style={s.section}>기타</Text>
       <View style={s.card}>
-        {/* ★ 새 줄 */}
         <TouchableOpacity
           style={s.plainBtn}
           onPress={() => navigation.navigate('Permission', { fromSettings: true })}
@@ -489,6 +494,7 @@ const makeStyles = (c, font, space, radius, TAP) => StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth, borderColor: c.line,
   },
   row: { marginBottom: space.lg },
+  rowDisabled: { opacity: 0.45 },  
   rowLabel: { ...font.body, fontWeight: '500', color: c.text },
   rowHint: { ...font.sub, color: c.textMuted, marginTop: 3, lineHeight: 19 },
   choiceGroup: { flexDirection: 'row', gap: space.sm, marginTop: space.sm + 2 },
