@@ -334,6 +334,15 @@ export default function Sidebar({ visible, onClose, navigation }) {
           <TouchableOpacity style={s.logoutBtn} onPress={handleLogout}>
             <Text style={s.logoutText}>로그아웃</Text>
           </TouchableOpacity>
+
+          {/* ★ 여기부터 새 블록 */}
+          <TouchableOpacity
+            style={s.quitBtn}
+            onPress={() => { onClose(); navigation.navigate('DeleteAccount'); }}
+          >
+            <Text style={s.quitText}>회원 탈퇴</Text>
+          </TouchableOpacity>
+          {/* ★ 새 블록 끝 */}
         </View>
       </Animated.View>
 
@@ -516,6 +525,8 @@ const makeStyles = (c, font, space, radius, TAP) => StyleSheet.create({
     backgroundColor: c.surfaceSoft,
   },
   logoutText: { ...font.body, fontWeight: '500', color: c.danger },
+  quitBtn: { alignItems: 'center', paddingVertical: space.sm, marginTop: space.xs },   // ★ 새 줄
+  quitText: { ...font.tiny, color: c.textFaint },                                      // ★ 새 줄
 
   // ── 비밀번호 창 ─────────────────────────────────────
   modalBg: {

@@ -19,8 +19,10 @@
 import { db, auth } from './firebase';
 import { ref, get, set, push, update, remove } from 'firebase/database';
 import { deleteImageByUrl } from './imageUpload';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const PATH = 'suggestions';
+export const MY_SUGGEST_KEYS = 'my_suggestion_ids';
 
 export const SUGGEST_TYPES = [
   { key: 'new', label: '새 건물', hint: '여기 건물이 생겼어요' },
@@ -53,6 +55,18 @@ export const saveSuggestion = async ({ type, text, images, location, buildingNam
 
   const newRef = push(ref(db, PATH));
   await set(newRef, data);
+
+  // ★ 여기부터 새 블록
+  // 탈퇴할 때 내 제보를 찾으려면 id를 알아야 한다.
+  // suggestions 목록 읽기는 어드민만 되므로 폰에 기록해둔다.
+  try {
+    const raw = await AsyncStorage.getItem(MY_SUGGEST_KEYS);
+    const list = raw ? JSON.parse(raw) : [];
+    list.push(newRef.key);
+    await AsyncStorage.setItem(MY_SUGGEST_KEYS, JSON.stringify(list));
+  } catch (e) {}
+  // ★ 새 블록 끝
+
   return newRef.key;
 };
 

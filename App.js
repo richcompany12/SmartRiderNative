@@ -14,6 +14,7 @@ import AlertDetailScreen from './screens/AlertDetailScreen';
 import SuggestScreen from './screens/SuggestScreen';
 import SuggestAdminScreen from './screens/SuggestAdminScreen';
 import PermissionScreen from './screens/PermissionScreen'; 
+import DeleteAccountScreen from './screens/DeleteAccountScreen';    // ★ 새 줄 
 import { navigationRef } from './navigationRef';
 
 const Stack = createNativeStackNavigator();
@@ -37,6 +38,7 @@ function AppNavigator() {
             <Stack.Screen name="Suggest" component={SuggestScreen} options={{ headerShown: false }} />
             <Stack.Screen name="SuggestAdmin" component={SuggestAdminScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Permission" component={PermissionScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="DeleteAccount" component={DeleteAccountScreen} options={{ headerShown: false }} />
           </>
         ) : (
           <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
