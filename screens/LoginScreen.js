@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, Image, ScrollView,
-  StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform
+  StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, Linking   
 } from 'react-native';
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -142,6 +142,13 @@ export default function LoginScreen() {
             등록하신 출입 정보는 이 폰에만 저장되며 서버로 전송되지 않습니다.
           </Text>
         </View>
+
+        <TouchableOpacity                                                       
+          style={s.policyLink}                                                   
+          onPress={() => Linking.openURL('https://richcanopy.kr/smartrider/privacy/')}               
+        >                                                                        
+          <Text style={s.policyText}>개인정보처리방침</Text>                    
+        </TouchableOpacity>                                                    
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -204,4 +211,6 @@ const makeStyles = (c, font, space, radius, TAP) => StyleSheet.create({
     padding: space.md, marginTop: space.xxl,
   },
   privacyText: { flex: 1, ...font.tiny, color: c.accent, lineHeight: 18 },
+  policyLink: { minHeight: TAP, justifyContent: 'center', alignItems: 'center', marginTop: space.sm },   // ★ 새 줄
+  policyText: { ...font.tiny, color: c.textSub, textDecorationLine: 'underline' },                       // ★ 새 줄
 });

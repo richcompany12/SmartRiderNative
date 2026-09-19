@@ -329,7 +329,10 @@ export default function RegisterScreen({ navigation, route }) {
             ) : (
               <View style={s.privacyBox}>
                 <Icon name="lock-outline" size={16} color={c.accent} />
-                <Text style={s.privacyText}>이 정보는 내 폰에만 저장됩니다</Text>
+                <Text style={s.privacyText}>
+                  이 정보는 내 폰에만 저장됩니다{'\n'}                        
+                  앱을 지우면 함께 사라지니 메뉴에서 백업해두세요              
+                </Text>                                                       
               </View>
             )
           )}
@@ -554,10 +557,10 @@ const makeStyles = (c, font, space, radius, TAP) => StyleSheet.create({
   scopeTextPublic: { color: '#fff' },
 
   privacyBox: {
-    flexDirection: 'row', alignItems: 'center', gap: space.sm,
+    flexDirection: 'row', alignItems: 'flex-start', gap: space.sm,                          // ★ 바뀐 줄
     backgroundColor: c.accentSoft, borderRadius: radius.md, padding: space.md,
   },
-  privacyText: { ...font.sub, fontWeight: '500', color: c.accent },
+  privacyText: { flex: 1, ...font.sub, fontWeight: '500', color: c.accent, lineHeight: 20 },  // ★ 바뀐 줄
 
   noteBox: {
     backgroundColor: c.surfaceSoft, borderRadius: radius.md,
