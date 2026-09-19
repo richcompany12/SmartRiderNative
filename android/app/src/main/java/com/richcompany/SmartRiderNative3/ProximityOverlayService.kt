@@ -587,8 +587,7 @@ class ProximityOverlayService : Service() {
     private fun emitMuteCount() {
         try {
             val reactContext = (application as? ReactApplication)
-                ?.reactNativeHost
-                ?.reactInstanceManager
+                ?.reactHost
                 ?.currentReactContext ?: return
             val map = com.facebook.react.bridge.Arguments.createMap()
             map.putInt("count", countMutes())
@@ -1218,8 +1217,7 @@ class ProximityOverlayService : Service() {
     private fun emitOpenHome(navId: Long) {
         try {
             val reactContext = (application as? ReactApplication)
-                ?.reactNativeHost
-                ?.reactInstanceManager
+                ?.reactHost
                 ?.currentReactContext ?: return
             val map = com.facebook.react.bridge.Arguments.createMap()
             map.putString("navId", navId.toString())
@@ -1232,8 +1230,7 @@ class ProximityOverlayService : Service() {
     private fun emitOpenMap(navId: Long) {
         try {
             val reactContext = (application as? ReactApplication)
-                ?.reactNativeHost
-                ?.reactInstanceManager
+                ?.reactHost
                 ?.currentReactContext ?: return
             val map = com.facebook.react.bridge.Arguments.createMap()
             map.putDouble("lat", curLat)
@@ -1517,8 +1514,7 @@ class ProximityOverlayService : Service() {
     private fun emitDetailRequest(buildingId: String, navId: Long) {
         try {
             val reactContext = (application as? ReactApplication)
-                ?.reactNativeHost
-                ?.reactInstanceManager
+                ?.reactHost
                 ?.currentReactContext
             if (reactContext == null) {
                 android.util.Log.d(TAG, "상세 요청 보류 — JS 아직 준비 안 됨")

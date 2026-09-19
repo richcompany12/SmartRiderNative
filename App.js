@@ -16,8 +16,10 @@ import SuggestAdminScreen from './screens/SuggestAdminScreen';
 import PermissionScreen from './screens/PermissionScreen'; 
 import DeleteAccountScreen from './screens/DeleteAccountScreen';    // ★ 새 줄 
 import { navigationRef } from './navigationRef';
+import { initAds } from './adManager';                              // ★ 새 줄
 
 const Stack = createNativeStackNavigator();
+initAds();                                                          // ★ 새 줄
 
 function AppNavigator() {
   const { user } = useAuth();

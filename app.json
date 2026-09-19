@@ -45,5 +45,9 @@
       ],
       "expo-secure-store"
     ]
+  },
+  "react-native-google-mobile-ads": {
+    "android_app_id": "ca-app-pub-5136124041871438~7101523529"
   }
+
 }

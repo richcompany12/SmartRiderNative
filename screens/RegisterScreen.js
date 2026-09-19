@@ -15,6 +15,7 @@ import {
   savePersonalBuilding, savePersonalNote, isLocalId, setFavorite, isFavorite,
 } from '../personalDB';
 import { useTheme } from '../theme';
+import { maybeShowInterstitial } from '../adManager';       
 
 const SPECIAL_CHARS_NAME = ['동', '라인', '-', ',', '1,2라인', '3,4라인', '5,6라인', '7,8라인'];
 const SK_SHORTCUTS = ['SK뷰', 'SK1차', 'SK2차', 'SK3차'];
@@ -209,7 +210,12 @@ export default function RegisterScreen({ navigation, route }) {
         invalidateBuildingsCache();
       }
 
+      if (!editingId && regMode === 'building' && scope === 'public') {       // ★ 새 줄
+        navigation.replace('Detail', { buildingId: savedId, startEdit: true }); // ★ 새 줄
+        return;                                                               // ★ 새 줄
+      }                                                                        // ★ 새 줄
       navigation.goBack();
+      if (!editingId && regMode === 'building') maybeShowInterstitial();   // ★ 새 줄
     } catch (e) {
       console.log('[REGISTER] 저장 실패:', e?.message);
       Alert.alert('오류', '저장 중 오류가 발생했습니다.');

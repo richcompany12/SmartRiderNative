@@ -192,7 +192,7 @@ export default function DetailScreen({ navigation, route }) {
   const { isAdmin } = useAuth();
 
   const [building, setBuilding] = useState(null);
-  const [editMode, setEditMode] = useState(false);
+   const [editMode, setEditMode] = useState(route.params?.startEdit === true);   // ★ 바뀐 줄
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const [locationChanged, setLocationChanged] = useState(false);
