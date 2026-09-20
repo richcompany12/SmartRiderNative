@@ -143,7 +143,7 @@ export default function SuggestScreen({ navigation, route }) {
           style={s.input}
           value={buildingName}
           onChangeText={setBuildingName}
-          placeholder="예: 동탄 자연앤데시앙 871동"
+          placeholder="예: 서천 경희마크329"
           placeholderTextColor={c.textFaint}
         />
 

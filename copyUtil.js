@@ -17,7 +17,7 @@ export const say = (msg) => {
 export const copyBuildingMemo = async (item) => {
   const text = [item?.memo, item?.memo2].filter(v => (v || '').trim()).join('  /  ');
   if (!text) {
-    say('복사할 출입 정보가 없습니다');
+    say('복사할 메모가 없습니다');
     return false;
   }
   await Clipboard.setStringAsync(text);

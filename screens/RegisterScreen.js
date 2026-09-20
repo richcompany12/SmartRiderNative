@@ -15,14 +15,10 @@ import {
   savePersonalBuilding, savePersonalNote, isLocalId, setFavorite, isFavorite,
 } from '../personalDB';
 import { useTheme } from '../theme';
-import { maybeShowInterstitial } from '../adManager';       
-
-const SPECIAL_CHARS_NAME = ['동', '라인', '-', ',', '1,2라인', '3,4라인', '5,6라인', '7,8라인'];
-const SK_SHORTCUTS = ['SK뷰', 'SK1차', 'SK2차', 'SK3차'];
-const SPECIAL_CHARS_MEMO = ['#', '*', '호출', '입력', '비번', '엔터', '종', '경비', '열쇠'];
+import { maybeShowInterstitial } from '../adManager';   
+import ShortcutBar from './ShortcutBar';       
 
 // 건물 이름 최대 글자수.
-// 기준: "동탄 자연앤데시앙 871동, 1,2,3 라인" + 여유 2글자
 const NAME_MAX = 25;
 
 const ALERT_TYPES = [
@@ -94,10 +90,10 @@ export default function RegisterScreen({ navigation, route }) {
     return () => clearTimeout(t);
   }, []);
 
-  const insertChar = (ch) => {
-    if (activeField === 'name') setName(p => (p + ch).slice(0, NAME_MAX));
-    else if (activeField === 'memo') setMemo(p => p + ch);
-    else if (activeField === 'memo2') setMemo2(p => p + ch);
+  const insertTo = (field, ch) => {                                       // ★ 바뀐 줄
+    if (field === 'name') setName(p => (p + ch).slice(0, NAME_MAX));
+    else if (field === 'memo') setMemo(p => p + ch);
+    else if (field === 'memo2') setMemo2(p => p + ch);
   };
 
   const toggleMemoKeyboard = () => {
@@ -140,7 +136,7 @@ export default function RegisterScreen({ navigation, route }) {
     if (!memo.trim() && !memo2.trim()) { resolve(true); return; }
     Alert.alert(
       '공용으로 저장합니다',
-      '출입 정보가 모든 사용자에게 공개됩니다.\n현관 비밀번호는 "내 폰에만"으로 저장하세요.',
+      '도착 메모가 모든 사용자에게 공개됩니다.\n개인적인 메모는 "내 폰에만"으로 저장하세요.',
       [
         { text: '개인으로 바꾸기', style: 'cancel', onPress: () => resolve(false) },
         { text: '그대로 공용 저장', style: 'destructive', onPress: () => resolve(true) },
@@ -340,7 +336,7 @@ export default function RegisterScreen({ navigation, route }) {
           {regMode === 'building' && editingScope === 'public' && saveScope === 'personal' && (
             <View style={s.noteBox}>
               <Text style={s.noteText}>
-                공용 건물입니다. 출입 정보만 내 폰에 따로 저장되고,
+                공용 건물입니다. 도착 메모만 내 폰에 따로 저장되고,
                 이름·샛길·특이사항은 바뀌지 않습니다.
               </Text>
             </View>
@@ -360,28 +356,17 @@ export default function RegisterScreen({ navigation, route }) {
             onChangeText={setName}
             maxLength={NAME_MAX}
             onFocus={() => setActiveField('name')}
-            placeholder={regMode === 'building' ? '예: 푸른마을 포스코' : '예: 주차단속 지역'}
+            placeholder={regMode === 'building' ? '예: 능동 헤리움' : '예: 주차단속 지역'}
             placeholderTextColor={c.textFaint}
           />
 
-          <View style={s.keyGrid}>
-            {SPECIAL_CHARS_NAME.map(ch => (
-              <TouchableOpacity key={ch} style={s.key} onPress={() => insertChar(ch)}>
-                <Text style={s.keyText}>{ch}</Text>
-              </TouchableOpacity>
-            ))}
-            {SK_SHORTCUTS.map(ch => (
-              <TouchableOpacity key={ch} style={[s.key, s.keySK]} onPress={() => insertChar(ch)}>
-                <Text style={s.keyText}>{ch}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          <ShortcutBar storageKey="shortcuts_name" onPick={ch => insertTo('name', ch)} />
 
           {regMode === 'building' ? (
             <>
-              {/* 출입 정보 */}
+               {/* 도착 메모 */}
               <View style={s.labelRow}>
-                <Text style={s.label}>출입 정보</Text>
+                <Text style={s.label}>도착 메모</Text>
                 <TouchableOpacity
                   onPress={toggleMemoKeyboard}
                   style={[s.kbBtn, memoNumeric && s.kbBtnOn]}
@@ -397,32 +382,29 @@ export default function RegisterScreen({ navigation, route }) {
                 value={memo}
                 onChangeText={setMemo}
                 onFocus={() => setActiveField('memo')}
-                placeholder="비밀번호 등"
+                placeholder="예: 후문 계단이 빨라요"
                 placeholderTextColor={c.textFaint}
                 inputMode={memoNumeric ? 'numeric' : 'text'}
                 multiline
               />
 
-              <Text style={s.label}>출입 정보 2 (백업)</Text>
+              <Text style={s.label}>도착 메모 2</Text>
               <TextInput
                 ref={memo2Ref}
                 style={[s.input, s.inputMono]}
                 value={memo2}
                 onChangeText={setMemo2}
                 onFocus={() => setActiveField('memo2')}
-                placeholder="비번이 바뀔 때를 대비한 예비"
+                placeholder="추가로 남길 메모"
                 placeholderTextColor={c.textFaint}
                 inputMode={memoNumeric ? 'numeric' : 'text'}
                 multiline
               />
 
-              <View style={s.keyGrid}>
-                {SPECIAL_CHARS_MEMO.map(ch => (
-                  <TouchableOpacity key={ch} style={s.key} onPress={() => insertChar(ch)}>
-                    <Text style={s.keyText}>{ch}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              <ShortcutBar
+                storageKey="shortcuts_memo"
+                onPick={ch => insertTo(activeField === 'memo2' ? 'memo2' : 'memo', ch)}
+              />
 
               <Text style={s.label}>위치</Text>
               <LocationBox />

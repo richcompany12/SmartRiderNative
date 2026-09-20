@@ -158,7 +158,7 @@ export default function PermissionScreen({ navigation, route }) {
       >
         <Text style={s.title}>권한 3개가 필요해요</Text>
         <Text style={s.lead}>
-          건물 근처에 갔을 때 비밀번호를 자동으로 띄워드리려면{'\n'}
+          건물 근처에 갔을 때 내 메모를 자동으로 띄워드리려면{'\n'}
           아래 3가지를 허용해야 합니다.
         </Text>
 
@@ -167,7 +167,7 @@ export default function PermissionScreen({ navigation, route }) {
           title="위치 — 항상 허용"
           desc={
             '스마트라이더는 앱을 닫거나 화면이 꺼져 있을 때도 위치를 확인합니다. ' +
-            '등록한 건물 근처에 도착하면 출입 정보를 띄우고, 단속 구역에 들어가면 경고하기 위해서입니다. ' +
+            '등록한 건물 근처에 도착하면 내가 적어둔 메모를 띄우고, 단속 구역에 들어가면 경고하기 위해서입니다. ' +
             '위치 정보는 서버로 전송되지 않고 폰 안에서만 쓰입니다.'
           }
           state={loc}

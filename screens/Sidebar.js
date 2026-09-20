@@ -356,7 +356,7 @@ export default function Sidebar({ visible, onClose, navigation }) {
               <>
                 <Text style={s.modalTitle}>백업 비밀번호를 정해주세요</Text>
                 <Text style={s.modalDesc}>
-                  이 파일에는 출입 비밀번호가 들어 있습니다.{'\n'}
+                  이 파일에는 내가 적은 건물 메모가 들어 있습니다.{'\n'}
                   카톡이나 메일로 보내도 안전하도록 잠급니다.
                 </Text>
 

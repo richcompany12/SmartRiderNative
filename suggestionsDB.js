@@ -26,7 +26,7 @@ export const MY_SUGGEST_KEYS = 'my_suggestion_ids';
 
 export const SUGGEST_TYPES = [
   { key: 'new', label: '새 건물', hint: '여기 건물이 생겼어요' },
-  { key: 'wrong', label: '정보가 달라요', hint: '비번 변경, 층별 배치 차이 등' },
+  { key: 'wrong', label: '정보가 달라요', hint: '입구 변경, 층별 배치 차이 등' },
   { key: 'alert', label: '알림 지점', hint: '단속 카메라가 있어요' },
   { key: 'etc', label: '기타', hint: null },
 ];

@@ -23,7 +23,7 @@ export default function BuildingRow({ item, onPress, onCopy }) {
   const hasLoc = !!item.location;
 
   // 이름 아래 줄: 비번 → 사진 → 없음 순으로 보여준다
-  let subText = '출입 정보 없음';
+  let subText = '메모 없음';
   let subMono = false;
   if (hasMemo) { subText = item.memo; subMono = true; }
   else if (item.images?.length > 0) { subText = `배치도 ${item.images.length}장`; }

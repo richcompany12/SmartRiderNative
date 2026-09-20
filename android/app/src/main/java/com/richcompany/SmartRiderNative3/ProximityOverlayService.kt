@@ -1020,7 +1020,7 @@ class ProximityOverlayService : Service() {
 
                 val hasMemo = memoLines.isNotEmpty()
                 val memo = TextView(this).apply {
-                    text = if (hasMemo) memoLines.joinToString("\n") else "출입정보 없음"
+                    text = if (hasMemo) memoLines.joinToString("\n") else "메모 없음"
                     setTextColor(Color.parseColor(if (hasMemo) "#075B4B" else "#9A968C"))
                     textSize = if (hasMemo) 22f else 13f
                     if (hasMemo) typeface = android.graphics.Typeface.MONOSPACE

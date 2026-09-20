@@ -18,6 +18,7 @@ import { pickImages, takePhoto, uploadBuildingImages, deleteImageByUrl } from '.
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { copyBuildingMemo } from '../copyUtil';
+import ShortcutBar from './ShortcutBar';                                  // ★ 새 줄
 import { useTheme } from '../theme';
 
 const SCREEN = Dimensions.get('window');
@@ -192,7 +193,8 @@ export default function DetailScreen({ navigation, route }) {
   const { isAdmin } = useAuth();
 
   const [building, setBuilding] = useState(null);
-   const [editMode, setEditMode] = useState(route.params?.startEdit === true);   // ★ 바뀐 줄
+  const [editMode, setEditMode] = useState(route.params?.startEdit === true);
+  const [memoField, setMemoField] = useState('memo');                     // ★ 새 줄
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const [locationChanged, setLocationChanged] = useState(false);
@@ -376,7 +378,7 @@ export default function DetailScreen({ navigation, route }) {
     Alert.alert(
       '공용으로 올리기',
       `"${building.name}"을(를) 모든 사용자가 볼 수 있게 올립니다.\n\n` +
-      '출입 정보(비밀번호)는 올라가지 않고 내 폰에만 남습니다.',
+      '도착 메모는 올라가지 않고 내 폰에만 남습니다.',
       [
         { text: '취소', style: 'cancel' },
         {
@@ -405,8 +407,8 @@ export default function DetailScreen({ navigation, route }) {
 
   const handleShare = () => {
     const lines = [building.name];
-    if (building.memo) lines.push(`출입: ${building.memo}`);
-    if (building.memo2) lines.push(`백업: ${building.memo2}`);
+    if (building.memo) lines.push(`메모: ${building.memo}`);
+    if (building.memo2) lines.push(`메모2: ${building.memo2}`);
     if (building.shortcut) lines.push(`샛길: ${building.shortcut}`);
     if (building.note) lines.push(`특이사항: ${building.note}`);
     Share.share({ message: lines.join('\n') }).catch(() => {});
@@ -423,6 +425,10 @@ export default function DetailScreen({ navigation, route }) {
   }
 
   const set = (k, v) => setBuilding(p => ({ ...p, [k]: v }));
+  const append = (k, ch, max) => setBuilding(p => {                       // ★ 새 줄
+    const v = (p[k] || '') + ch;                                          // ★ 새 줄
+    return { ...p, [k]: max ? v.slice(0, max) : v };                      // ★ 새 줄
+  });                                                                     // ★ 새 줄
 
   return (
     <>
@@ -467,14 +473,14 @@ export default function DetailScreen({ navigation, route }) {
                 {!isMine && isAdmin && (
                   <View style={s.warnBox}>
                     <Text style={s.warnText}>
-                      공용 데이터를 수정합니다. 출입 정보를 넣으면 모든 사용자에게 공개됩니다.
+                      공용 데이터를 수정합니다. 도착 메모를 넣으면 모든 사용자에게 공개됩니다.
                     </Text>
                   </View>
                 )}
                 {!isMine && !isAdmin && (
                   <View style={s.noteBox}>
                     <Text style={s.noteText}>
-                      출입 정보만 내 폰에 저장됩니다. 다른 항목은 바뀌지 않습니다.
+                      도착 메모만 내 폰에 저장됩니다. 다른 항목은 바뀌지 않습니다.
                     </Text>
                   </View>
                 )}
@@ -487,26 +493,31 @@ export default function DetailScreen({ navigation, route }) {
                   maxLength={25}
                   placeholderTextColor={c.textFaint}
                 />
+                <ShortcutBar storageKey="shortcuts_name" onPick={ch => append('name', ch, 25)} />
 
-                <Text style={s.label}>출입 정보</Text>
+                <Text style={s.label}>도착 메모</Text>
                 <TextInput
                   style={[s.input, s.inputMono]}
                   value={building.memo}
                   onChangeText={v => set('memo', v)}
-                  placeholder="비밀번호 등"
+                  onFocus={() => setMemoField('memo')}
+                  placeholder="예: 후문 계단이 빨라요"
                   placeholderTextColor={c.textFaint}
                   multiline
                 />
 
-                <Text style={s.label}>출입 정보 2 (백업)</Text>
+                <Text style={s.label}>도착 메모 2</Text>
                 <TextInput
                   style={[s.input, s.inputMono]}
                   value={building.memo2}
                   onChangeText={v => set('memo2', v)}
-                  placeholder="비번이 바뀔 때를 대비한 예비"
+                  onFocus={() => setMemoField('memo2')}
+                  placeholder="추가로 남길 메모"
                   placeholderTextColor={c.textFaint}
                   multiline
                 />
+                <ShortcutBar storageKey="shortcuts_memo" onPick={ch => append(memoField, ch)} />
+
 
                 <Text style={s.label}>샛길 정보</Text>
                 <TextInput
@@ -524,7 +535,7 @@ export default function DetailScreen({ navigation, route }) {
                   onChangeText={v => set('note', v)}
                   multiline
                   placeholderTextColor={c.textFaint}
-                />
+                />                  
 
                 {/* 사진 — 공용 건물 + 어드민만 */}
                 {canEditPhotos && (
@@ -632,13 +643,13 @@ export default function DetailScreen({ navigation, route }) {
                 {/* 비번 — 라이더가 제일 급하게 보는 것이라 크게 보여준다 */}
                 <TouchableOpacity style={s.memoCard} onPress={copyMemo} activeOpacity={0.8}>
                   <View style={s.memoHead}>
-                    <Text style={s.memoLabel}>출입 정보</Text>
+                    <Text style={s.memoLabel}>도착 메모</Text>
                     <Icon name="content-copy" size={18} color={c.textSub} />
                   </View>
                   <Text style={s.memoValue}>{building.memo || '없음'}</Text>
                   {!!building.memo2 && (
                     <>
-                      <Text style={[s.memoLabel, { marginTop: 12 }]}>백업</Text>
+                      <Text style={[s.memoLabel, { marginTop: 12 }]}>메모 2</Text>
                       <Text style={s.memoBackup}>{building.memo2}</Text>
                     </>
                   )}
@@ -710,7 +721,7 @@ export default function DetailScreen({ navigation, route }) {
 
                 {!isMine && !isAdmin && (
                   <TouchableOpacity style={s.btnPrimary} onPress={() => setEditMode(true)}>
-                    <Text style={s.btnPrimaryText}>내 출입정보 입력</Text>
+                    <Text style={s.btnPrimaryText}>내 메모 입력</Text>
                   </TouchableOpacity>
                 )}
 

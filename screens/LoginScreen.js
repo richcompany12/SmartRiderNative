@@ -139,7 +139,7 @@ export default function LoginScreen() {
         <View style={s.privacyBox}>
           <Icon name="lock-outline" size={15} color={c.accent} />
           <Text style={s.privacyText}>
-            등록하신 출입 정보는 이 폰에만 저장되며 서버로 전송되지 않습니다.
+            등록하신 도착 메모는 이 폰에만 저장되며 서버로 전송되지 않습니다.
           </Text>
         </View>
 

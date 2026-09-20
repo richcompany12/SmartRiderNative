@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useMemo } from 'react';
+import { useState, useRef, useCallback, useMemo, useDeferredValue } from 'react';   // ★ 바뀐 줄
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View, Text, TextInput, FlatList, TouchableOpacity,
@@ -10,8 +10,8 @@ import BuildingRow from './BuildingRow';
 import { getCachedBuildings } from '../buildingsCache';
 import { copyBuildingMemo } from '../copyUtil';
 import { useTheme } from '../theme';
+import ShortcutBar from './ShortcutBar';
 
-const SK_SHORTCUTS = ['SK뷰', 'SK1차', 'SK2차', 'SK3차'];
 const PAGE = 20;
 
 // 한글 초성 추출. "ㄷㅌㄴㄷ" 로 "동탄능동"을 찾기 위한 것.
@@ -26,6 +26,18 @@ const getInitials = (str) => {
 
 const clean = (str) => str.replace(/[\s{}[\]/?.,;:|)*~`!^\-_+<>@#$%&\\=('"]/g, '').toLowerCase();
 const nums = (str) => str.replace(/[^0-9]/g, '');
+
+// 띄어쓰기와 글자↔숫자 경계에서 잘라 조각마다 따로 찾는다. 전부 맞아야 결과.  // ★ 새 줄
+// "포스코 푸른마을"처럼 순서가 달라도, "ㅍㄹㅍㅅㅋ0512"처럼 붙여 써도 찾는다.  // ★ 새 줄
+const tokenize = (str) => str.trim().split(/\s+/)                          // ★ 새 줄
+  .flatMap(w => w.match(/[0-9]+|[^0-9]+/g) || [])                          // ★ 새 줄
+  .map(clean)                                                              // ★ 새 줄
+  .filter(Boolean);                                                        // ★ 새 줄
+
+const matchToken = (x, tk) => {                                            // ★ 새 줄
+  if (/^[0-9]+$/.test(tk)) return x.num.includes(tk);                      // ★ 새 줄
+  return x.name.includes(tk) || x.init.includes(getInitials(tk));          // ★ 새 줄
+};                                                                         // ★ 새 줄
 
 export default function SearchScreen({ navigation }) {
   const insets = useSafeAreaInsets();
@@ -48,22 +60,22 @@ export default function SearchScreen({ navigation }) {
     }, [])
   );
 
-  // 이름·초성·숫자 세 가지로 찾는다.
-  // 장갑 낀 손으로는 오타가 나기 쉬워서 넓게 잡아준다.
+  // 건물마다 검색용 글자를 미리 만들어둔다 (한 글자마다 1,000개를 다시 계산하지 않게)
+  const index = useMemo(() => buildings
+    .filter(b => b?.name)
+    .map(b => {
+      const n = clean(b.name);
+      return { b, name: n, init: getInitials(n), num: nums(b.name) };
+    }), [buildings]);
+
+  // 한글 입력이 버벅이지 않게 검색은 한 박자 늦게 따라간다
+  const deferredTerm = useDeferredValue(term);
+
   const results = useMemo(() => {
-    if (term.length === 0) return buildings;
-    const t = clean(term);
-    const tInit = getInitials(t);
-    const tNum = nums(term);
-    return buildings.filter(b => {
-      if (!b?.name) return false;
-      const name = clean(b.name);
-      if (name.includes(t)) return true;
-      if (getInitials(name).includes(tInit)) return true;
-      if (tNum.length > 0 && nums(name).includes(tNum)) return true;
-      return false;
-    });
-  }, [buildings, term]);
+    const tokens = tokenize(deferredTerm);
+    if (tokens.length === 0) return buildings;
+    return index.filter(x => tokens.every(tk => matchToken(x, tk))).map(x => x.b);
+  }, [index, buildings, deferredTerm]);
 
   const onChangeTerm = (v) => { setTerm(v); setShown(PAGE); };
 
@@ -118,19 +130,10 @@ export default function SearchScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      {/* 단축 검색어 */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={s.chipScroll}
-        contentContainerStyle={s.chipRow}
-      >
-        {SK_SHORTCUTS.map(sk => (
-          <TouchableOpacity key={sk} style={s.chip} onPress={() => onChangeTerm(sk)}>
-            <Text style={s.chipText}>{sk}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      {/* 단축 검색어 — 등록 화면의 건물 이름 버튼과 같은 목록 */}
+      <View style={{ paddingHorizontal: space.lg, marginTop: space.sm }}>
+        <ShortcutBar storageKey="shortcuts_name" onPick={onChangeTerm} />
+      </View>
 
       <Text style={s.count}>
         {term.length > 0 ? `검색 결과 ${results.length}개` : `전체 ${results.length}개`}
