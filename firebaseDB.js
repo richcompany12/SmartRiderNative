@@ -9,6 +9,15 @@ import { ref, get, set, update, remove, push, onValue, off } from 'firebase/data
 const BUILDINGS_PATH = 'buildings';
 const ALERTS_PATH = 'alerts';
 
+// ★ 새 줄 — 서버가 대답이 없으면 정해진 시간 뒤 포기 (비행기모드·지하 무한 로딩 방지)
+const withTimeout = (promise, ms, label) =>                             // ★ 새 줄
+  Promise.race([                                                        // ★ 새 줄
+    promise,                                                            // ★ 새 줄
+    new Promise((_, reject) =>                                          // ★ 새 줄
+      setTimeout(() => reject(new Error(label + ' 응답 없음')), ms)      // ★ 새 줄
+    ),                                                                  // ★ 새 줄
+  ]);                                                                   // ★ 새 줄
+
 // ── 건물 목록 전체 가져오기 ──
 export const getAllBuildings = async () => {
   const snapshot = await get(ref(db, BUILDINGS_PATH));
@@ -94,7 +103,7 @@ export const recoverDataFromFirebase = async () => {};
 // ─────────────────────────────────────────────────────────
 
 export const getAllAlertPoints = async () => {
-  const snapshot = await get(ref(db, ALERTS_PATH));
+  const snapshot = await withTimeout(get(ref(db, ALERTS_PATH)), 6000, '알림지점');  // ★ 바뀐 줄
   if (!snapshot.exists()) return [];
   return Object.entries(snapshot.val())
     .filter(([_, data]) => data !== null)

@@ -46,6 +46,10 @@ export default function HomeScreen({ navigation }) {
       Alert.alert('오류', '건물 데이터를 불러오지 못했습니다.\n' + (e?.message || ''));
     }
 
+       // ★ 새 줄 — 건물이 준비되면 바로 목록을 보여준다 (알림지점은 뒤에서 이어서 받는다)
+    setLoading(false);                                                  // ★ 새 줄
+    setRefreshing(false);                                               // ★ 새 줄
+
     // 알림지점은 곁다리다. 실패해도 건물 목록은 그대로 보여야 한다.
     try {
       const aList = await getAllAlertPoints();
@@ -54,9 +58,6 @@ export default function HomeScreen({ navigation }) {
       setAlerts([]);
       console.log('알림지점 로드 실패:', e?.message);
     }
-
-    setLoading(false);
-    setRefreshing(false);
   };
 
   // 화면에 돌아올 때마다 다시 읽는다.

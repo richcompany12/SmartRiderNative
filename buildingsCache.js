@@ -22,13 +22,23 @@ let _publicCache = null;
 let _publicCacheTime = 0;
 const CACHE_TTL = 3 * 60 * 60 * 1000; // 3시간
 
+// ★ 새 줄 — 서버가 대답이 없으면 정해진 시간 뒤 포기 (비행기모드·지하 무한 로딩 방지)
+const SERVER_TIMEOUT = 6000;                                            // ★ 새 줄
+const withTimeout = (promise, ms, label) =>                             // ★ 새 줄
+  Promise.race([                                                        // ★ 새 줄
+    promise,                                                            // ★ 새 줄
+    new Promise((_, reject) =>                                          // ★ 새 줄
+      setTimeout(() => reject(new Error(label + ' 응답 없음')), ms)      // ★ 새 줄
+    ),                                                                  // ★ 새 줄
+  ]);                                                                   // ★ 새 줄
+
 // ── 공용 건물만 (캐시 적용) ──────────────────────────────
 const loadPublicBuildings = async (forceRefresh = false) => {
   const now = Date.now();
   if (!forceRefresh && _publicCache && (now - _publicCacheTime < CACHE_TTL)) {
     return _publicCache;
   }
-  const list = await getAllBuildings();
+  const list = await withTimeout(getAllBuildings(), SERVER_TIMEOUT, '공용 건물');  // ★ 바뀐 줄
   _publicCache = list.map((b) => ({ ...b, scope: 'public' }));
   _publicCacheTime = now;
   return _publicCache;
@@ -56,12 +66,44 @@ const applyPersonalNotes = (publicList, notes) => {
 // ── 메인 함수 ────────────────────────────────────────────
 // 기존 코드가 부르던 이름 그대로 유지했다. 화면 쪽은 고칠 필요 없다.
 export const getCachedBuildings = async (forceRefresh = false) => {
-  const [publicList, personalList, notes, favorites] = await Promise.all([
+  // ★ 새 줄 — allSettled: 하나가 실패해도 나머지는 살린다 (09-16 사고 방지)
+  const [pubR, perR, notesR, favR] = await Promise.allSettled([  // ★ 새 줄
     loadPublicBuildings(forceRefresh),
     getPersonalBuildings(),
     getPersonalNotes(),
     getFavorites(),
   ]);
+
+  // ★ 새 줄 — 공용: 실패하면 아까 받아둔 목록이라도, 그것도 없으면 빈 목록
+  let publicList = [];                                            // ★ 새 줄
+  if (pubR.status === 'fulfilled') {                              // ★ 새 줄
+    publicList = pubR.value || [];                                // ★ 새 줄
+  } else {                                                        // ★ 새 줄
+    publicList = _publicCache || [];                              // ★ 새 줄
+    console.log('공용 건물 로드 실패:', pubR.reason?.message);      // ★ 새 줄
+  }                                                               // ★ 새 줄
+
+  // ★ 새 줄 — 개인 건물 (폰)
+  let personalList = [];                                          // ★ 새 줄
+  if (perR.status === 'fulfilled') {                              // ★ 새 줄
+    personalList = perR.value || [];                              // ★ 새 줄
+  } else {                                                        // ★ 새 줄
+    console.log('개인 건물 로드 실패:', perR.reason?.message);      // ★ 새 줄
+  }                                                               // ★ 새 줄
+
+  // ★ 새 줄 — 메모·즐겨찾기: 실패하면 빈 값 (건물 목록은 그대로 보인다)
+  const notes = notesR.status === 'fulfilled' ? (notesR.value || {}) : {};   // ★ 새 줄
+  const favorites = favR.status === 'fulfilled' ? (favR.value || {}) : {};   // ★ 새 줄
+  if (notesR.status === 'rejected') console.log('메모 로드 실패:', notesR.reason?.message);      // ★ 새 줄
+  if (favR.status === 'rejected') console.log('즐겨찾기 로드 실패:', favR.reason?.message);      // ★ 새 줄
+
+  // ★ 새 줄 — 공용·개인 둘 다 실패했을 때만 화면에 오류를 올린다 (e.message 규칙)
+  if (pubR.status === 'rejected' && perR.status === 'rejected') {  // ★ 새 줄
+    throw new Error(                                              // ★ 새 줄
+      '공용: ' + (pubR.reason?.message || '') +                   // ★ 새 줄
+      ' / 개인: ' + (perR.reason?.message || '')                  // ★ 새 줄
+    );                                                            // ★ 새 줄
+  }                                                               // ★ 새 줄
 
   const merged = applyPersonalNotes(publicList, notes);
 
