@@ -21,7 +21,7 @@ import {
 
 const { ProximityOverlayModule } = NativeModules;
 
-const RADIUS_OPTIONS = [20, 30, 50];
+const RADIUS_OPTIONS = [15, 20, 25, 30, 40, 50];
 const ALERT_DISTANCE_OPTIONS = [50, 100, 200];
 
 const ALERT_TYPE_LIST = [
@@ -497,9 +497,9 @@ const makeStyles = (c, font, space, radius, TAP) => StyleSheet.create({
   rowDisabled: { opacity: 0.45 },  
   rowLabel: { ...font.body, fontWeight: '500', color: c.text },
   rowHint: { ...font.sub, color: c.textMuted, marginTop: 3, lineHeight: 19 },
-  choiceGroup: { flexDirection: 'row', gap: space.sm, marginTop: space.sm + 2 },
+  choiceGroup: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, marginTop: space.sm + 2 },   // ★ flexWrap 추가
   choice: {
-    flex: 1, minHeight: TAP, justifyContent: 'center', alignItems: 'center',
+    flexBasis: '30%', flexGrow: 1, minHeight: TAP, justifyContent: 'center', alignItems: 'center',   // ★ flex: 1 → 한 줄에 3개씩
     backgroundColor: c.surfaceSoft, borderRadius: radius.sm,
     borderWidth: StyleSheet.hairlineWidth, borderColor: c.line,
   },
