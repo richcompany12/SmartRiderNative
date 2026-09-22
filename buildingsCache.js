@@ -23,7 +23,7 @@ let _publicCacheTime = 0;
 const CACHE_TTL = 3 * 60 * 60 * 1000; // 3시간
 
 // ★ 새 줄 — 서버가 대답이 없으면 정해진 시간 뒤 포기 (비행기모드·지하 무한 로딩 방지)
-const SERVER_TIMEOUT = 6000;                                            // ★ 새 줄
+const SERVER_TIMEOUT = 12000;   // ★ 바뀐 줄 — 안쪽(firebaseDB)에서 4초+6초로 먼저 처리한다                                            // ★ 새 줄
 const withTimeout = (promise, ms, label) =>                             // ★ 새 줄
   Promise.race([                                                        // ★ 새 줄
     promise,                                                            // ★ 새 줄
@@ -122,6 +122,5 @@ export const getPublicBuildingsOnly = async (forceRefresh = false) => {
 
 // 공용 캐시만 비운다. 개인 데이터는 캐시가 없으므로 대상 아님.
 export const invalidateBuildingsCache = () => {
-  _publicCache = null;
-  _publicCacheTime = 0;
+  _publicCacheTime = 0;   // 시간만 0으로 → 다음에 새로 받되, 실패하면 예전 목록 사용
 };

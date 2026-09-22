@@ -42,40 +42,44 @@ Notifications.setNotificationHandler({
 let setupDone = false;
 let lastSyncAt = 0;
 
+// ★ 새 블록 — 건물 목록 + 반경을 Kotlin 서비스에 전달
+//   컴포넌트 밖으로 꺼냈다. 등록·상세 화면에서 저장 직후 부르기 위해.
+//   (예전엔 안에 갇혀 있어서 앱을 내렸다 올려야만 토스트에 반영됐다)
+export const syncBuildingsToService = async (reason) => {
+  try {
+    if (!ProximityOverlayModule) return;
+
+    const [buildings, radius] = await Promise.all([getCachedBuildings(), getRadius()]);
+    if (!buildings || buildings.length === 0) {
+      console.log('[PROX] 건물 캐시가 비어 있어 전달 보류');
+      return;
+    }
+
+    const slim = buildings
+      .filter(b => b.location?.lat && b.location?.lng)
+      .map(b => ({
+        id: String(b.id),
+        name: b.name || '',
+        memo: b.memo || '',
+        memo2: b.memo2 || '',
+        lat: b.location.lat,
+        lng: b.location.lng,
+      }));
+
+    await ProximityOverlayModule.setBuildings(JSON.stringify({ radius, buildings: slim }));
+    lastSyncAt = Date.now();
+    console.log(`[PROX] 건물 ${slim.length}개 Kotlin에 전달 (${reason}), 반경 ${radius}m`);
+  } catch (e) {
+    console.log('[PROX] 건물 전달 실패', e?.message || e);
+  }
+};
+// ★ 새 블록 끝
+
 export default function ProximityNotifier() {
   // 이미 처리한 요청번호. 같은 번호가 또 오면 무시한다.
   const doneNav = useRef({ detail: '', map: '', home: '' });
 
-  // 건물 목록 + 반경을 Kotlin 서비스에 전달
-  const syncBuildings = async (reason) => {
-    try {
-      if (!ProximityOverlayModule) return;
-
-      const [buildings, radius] = await Promise.all([getCachedBuildings(), getRadius()]);
-      if (!buildings || buildings.length === 0) {
-        console.log('[PROX] 건물 캐시가 비어 있어 전달 보류');
-        return;
-      }
-
-      // Kotlin이 쓰기 좋은 납작한 형태로 변환
-      const slim = buildings
-        .filter(b => b.location?.lat && b.location?.lng)
-        .map(b => ({
-          id: String(b.id),
-          name: b.name || '',
-          memo: b.memo || '',
-          memo2: b.memo2 || '',   // 백업 출입정보
-          lat: b.location.lat,
-          lng: b.location.lng,
-        }));
-
-      await ProximityOverlayModule.setBuildings(JSON.stringify({ radius, buildings: slim }));
-      lastSyncAt = Date.now();
-      console.log(`[PROX] 건물 ${slim.length}개 Kotlin에 전달 (${reason}), 반경 ${radius}m`);
-    } catch (e) {
-      console.log('[PROX] 건물 전달 실패', e?.message || e);
-    }
-  };
+  const syncBuildings = syncBuildingsToService;   // ★ 바뀐 줄 — 본체는 파일 위쪽으로 옮김
 
   // 강력 알림 지점을 Kotlin 서비스에 전달
   // (판정도, "안 볼래" 기록도 전부 Kotlin이 한다. 앱이 꺼져 있어도 동작해야 하므로)

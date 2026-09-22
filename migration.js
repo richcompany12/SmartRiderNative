@@ -21,7 +21,7 @@
 
 import { db } from './firebase';
 import { ref, update } from 'firebase/database';
-import { getAllBuildings, saveBuilding } from './firebaseDB';
+import { getAllBuildings, saveBuilding, bumpVersion } from './firebaseDB';   // ★ 바뀐 줄
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   importPersonalData,
@@ -154,6 +154,8 @@ export const deleteOriginalsFromServer = async (onProgress) => {
     }
     onProgress?.(done + failed, ids.length);
   }
+
+  if (done > 0) await bumpVersion('buildings');                         // ★ 새 줄 — 서버에서 지웠으니 라이더 폰도 새로 받게
 
   await saveState({ ...state, deletedAt: Date.now(), deletedCount: done });
   return { done, failed, total: ids.length };

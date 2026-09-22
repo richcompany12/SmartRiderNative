@@ -21,6 +21,22 @@ import { PERMISSION_SEEN_KEY } from './PermissionScreen';                       
 // 1000개를 한꺼번에 그리면 스크롤이 끊긴다.
 const PAGE = 20;
 
+// ★ 새 줄 — 전체 탭 정렬. 누를 때마다 다음 것으로
+// ★ 새 줄 — 저장 시각을 숫자로 통일 (예전 데이터가 글자 형식이어도 정렬이 안 깨지게)
+const toTime = (t) => {                                                 // ★ 새 줄
+  if (typeof t === 'number') return t;                                  // ★ 새 줄
+  const n = Number(t);                                                  // ★ 새 줄
+  if (!isNaN(n)) return n;                                              // ★ 새 줄
+  const d = Date.parse(t);                                              // ★ 새 줄
+  return isNaN(d) ? 0 : d;                                              // ★ 새 줄
+};                                                                      // ★ 새 줄
+
+const SORTS = [
+  { key: 'new', label: '최신순' },                                       // ★ 새 줄
+  { key: 'old', label: '오래된순' },                                     // ★ 새 줄
+  { key: 'name', label: '이름순' },                                      // ★ 새 줄
+];                                                                      // ★ 새 줄
+
 export default function HomeScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const { isAdmin } = useAuth();
@@ -34,6 +50,7 @@ export default function HomeScreen({ navigation }) {
   const [tab, setTab] = useState('fav');       // 기본은 즐겨찾기
   const [shown, setShown] = useState(PAGE);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [sortMode, setSortMode] = useState('new');                      // ★ 새 줄
 
   const load = async (isRefresh = false) => {
     if (!isRefresh) setLoading(true);
@@ -41,7 +58,7 @@ export default function HomeScreen({ navigation }) {
     // 건물이 본체다. 이것만은 반드시 살린다.
     try {
       const list = await getCachedBuildings(isRefresh);
-      setBuildings([...list].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)));
+      setBuildings([...list].sort((a, b) => toTime(b.timestamp) - toTime(a.timestamp)));   // ★ 바뀐 줄
     } catch (e) {
       Alert.alert('오류', '건물 데이터를 불러오지 못했습니다.\n' + (e?.message || ''));
     }
@@ -98,14 +115,27 @@ export default function HomeScreen({ navigation }) {
   // 아래 FlatList·더보기 코드는 filtered만 보므로 고칠 게 없다.
   const filtered = useMemo(() => {
     if (tab === 'alert') return alerts;
-    return buildings.filter(b => {
+    const list = buildings.filter(b => {                                // ★ 바뀐 줄
       if (tab === 'fav') return b.isFav;
       if (tab === 'public') return b.scope !== 'personal';
       return true;
     });
-  }, [buildings, alerts, tab]);
+    // ★ 새 줄 — 전체 탭만 정렬을 바꾼다. 최신순은 불러올 때 이미 정렬돼 있다
+    if (tab !== 'all' || sortMode === 'new') return list;               // ★ 새 줄
+    if (sortMode === 'old') {                                           // ★ 새 줄
+      return [...list].sort((a, b) => toTime(a.timestamp) - toTime(b.timestamp));   // ★ 바뀐 줄
+    }                                                                   // ★ 새 줄
+    return [...list].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));  // ★ 새 줄
+  }, [buildings, alerts, tab, sortMode]);                               // ★ 바뀐 줄
 
   const changeTab = (key) => { setTab(key); setShown(PAGE); };
+
+    // ★ 새 줄 — 정렬 버튼: 최신순 → 오래된순 → 이름순 → 최신순
+  const cycleSort = () => {                                             // ★ 새 줄
+    const i = SORTS.findIndex(x => x.key === sortMode);                 // ★ 새 줄
+    setSortMode(SORTS[(i + 1) % SORTS.length].key);                     // ★ 새 줄
+    setShown(PAGE);                                                     // ★ 새 줄
+  };                                                                    // ★ 새 줄
 
   // ── 좌우 스와이프로 탭 이동 ─────────────────────────────
   //
@@ -225,6 +255,12 @@ export default function HomeScreen({ navigation }) {
             </TouchableOpacity>
           );
         })}
+        {tab === 'all' && (
+          <TouchableOpacity style={s.sortBtn} onPress={cycleSort}>
+            <Icon name="sort" size={16} color={c.accent} />
+            <Text style={s.sortText}>{SORTS.find(x => x.key === sortMode)?.label}</Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
 
       {/* 이 영역 안에서 좌우로 밀면 탭이 넘어간다 */}
@@ -300,6 +336,12 @@ const makeStyles = (c, font, space, radius, TAP) => StyleSheet.create({
   chipOn: { backgroundColor: c.accent, borderColor: c.accent },
   chipText: { ...font.chip, color: c.textSub },
   chipTextOn: { color: c.onAccent },
+  sortBtn: {                                                            // ★ 새 줄
+    minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 4,  // ★ 새 줄
+    paddingHorizontal: space.md, borderRadius: radius.pill,             // ★ 새 줄
+    borderWidth: StyleSheet.hairlineWidth, borderColor: c.accent,       // ★ 새 줄
+  },                                                                    // ★ 새 줄
+  sortText: { ...font.chip, color: c.accent },                          // ★ 새 줄
 
 
   empty: {

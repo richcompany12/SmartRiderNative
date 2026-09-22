@@ -18,7 +18,8 @@ import { pickImages, takePhoto, uploadBuildingImages, deleteImageByUrl } from '.
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { copyBuildingMemo } from '../copyUtil';
-import ShortcutBar from './ShortcutBar';                                  // ★ 새 줄
+import ShortcutBar from './ShortcutBar';   
+import { syncBuildingsToService } from './ProximityNotifier';          // ★ 새 줄                          
 import { useTheme } from '../theme';
 
 const SCREEN = Dimensions.get('window');
@@ -331,6 +332,7 @@ export default function DetailScreen({ navigation, route }) {
       setBuilding(p => ({ ...p, images: nextImages }));
       resetPhotoEdits();
       invalidateBuildingsCache();
+      syncBuildingsToService('상세 저장');                                // ★ 새 줄
       setEditMode(false);
       setLocationChanged(false);
       setSaveMsg('저장 완료');
@@ -364,6 +366,7 @@ export default function DetailScreen({ navigation, route }) {
               await deleteBuilding(buildingId);
             }
             invalidateBuildingsCache();
+            syncBuildingsToService('삭제');                               // ★ 새 줄
             navigation.goBack();
           } catch (e) {
             Alert.alert('오류', '삭제 실패: ' + e.message);

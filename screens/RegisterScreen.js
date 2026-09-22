@@ -16,7 +16,8 @@ import {
 } from '../personalDB';
 import { useTheme } from '../theme';
 import { maybeShowInterstitial } from '../adManager';   
-import ShortcutBar from './ShortcutBar';       
+import ShortcutBar from './ShortcutBar';  
+import { syncBuildingsToService } from './ProximityNotifier';          // ★ 새 줄    
 
 // 건물 이름 최대 글자수.
 const NAME_MAX = 25;
@@ -70,6 +71,9 @@ export default function RegisterScreen({ navigation, route }) {
   const nameRef = useRef(null);
   const memoRef = useRef(null);
   const memo2Ref = useRef(null);
+  const shortcutRef = useRef(null);                                     // ★ 새 줄
+  const noteRef = useRef(null);                                         // ★ 새 줄
+  const kbNumericRef = useRef(false);   // ★ 새 줄 — 지금 떠 있는 키보드가 숫자판인지
 
   useEffect(() => {
     if (buildingData) {
@@ -99,9 +103,20 @@ export default function RegisterScreen({ navigation, route }) {
   const toggleMemoKeyboard = () => {
     const target = activeField === 'memo2' ? memo2Ref : memoRef;
     target.current?.blur();
+    kbNumericRef.current = !memoNumeric;                                // ★ 새 줄
     setMemoNumeric(p => !p);
     setTimeout(() => target.current?.focus(), 50);
   };
+
+  // ★ 새 줄 — 글자 칸에 들어왔는데 숫자판이 떠 있으면, 키보드를 내렸다 올려서 글자판으로 바꾼다
+  const onTextFocus = (field, ref) => {                                 // ★ 새 줄
+    setActiveField(field);                                              // ★ 새 줄
+    if (kbNumericRef.current) {                                         // ★ 새 줄
+      kbNumericRef.current = false;                                     // ★ 새 줄
+      ref.current?.blur();                                              // ★ 새 줄
+      setTimeout(() => ref.current?.focus(), 80);                       // ★ 새 줄
+    }                                                                   // ★ 새 줄
+  };                                                                    // ★ 새 줄
 
   // 지금 서 있는 곳을 건물 위치로 잡는다.
   // 라이더는 그 건물 앞에서 등록하므로 지도를 여는 것보다 빠를 때가 많다.
@@ -206,7 +221,10 @@ export default function RegisterScreen({ navigation, route }) {
         invalidateBuildingsCache();
       }
 
-      if (!editingId && regMode === 'building' && scope === 'public') {       // ★ 새 줄
+      // ★ 새 줄 — 저장 직후 코틀린에 새 목록 전달 (토스트에 바로 반영). 기다리지 않고 화면 이동
+      if (regMode === 'building') syncBuildingsToService('등록 저장');   // ★ 새 줄
+
+      if (!editingId && regMode === 'building' && scope === 'public') {
         navigation.replace('Detail', { buildingId: savedId, startEdit: true }); // ★ 새 줄
         return;                                                               // ★ 새 줄
       }                                                                        // ★ 새 줄
@@ -355,7 +373,7 @@ export default function RegisterScreen({ navigation, route }) {
             value={name}
             onChangeText={setName}
             maxLength={NAME_MAX}
-            onFocus={() => setActiveField('name')}
+            onFocus={() => onTextFocus('name', nameRef)}
             placeholder={regMode === 'building' ? '예: 능동 헤리움' : '예: 주차단속 지역'}
             placeholderTextColor={c.textFaint}
           />
@@ -381,7 +399,7 @@ export default function RegisterScreen({ navigation, route }) {
                 style={[s.input, s.inputMono]}
                 value={memo}
                 onChangeText={setMemo}
-                onFocus={() => setActiveField('memo')}
+                onFocus={() => { setActiveField('memo'); kbNumericRef.current = memoNumeric; }}
                 placeholder="예: 후문 계단이 빨라요"
                 placeholderTextColor={c.textFaint}
                 inputMode={memoNumeric ? 'numeric' : 'text'}
@@ -394,7 +412,7 @@ export default function RegisterScreen({ navigation, route }) {
                 style={[s.input, s.inputMono]}
                 value={memo2}
                 onChangeText={setMemo2}
-                onFocus={() => setActiveField('memo2')}
+                onFocus={() => { setActiveField('memo2'); kbNumericRef.current = memoNumeric; }}
                 placeholder="추가로 남길 메모"
                 placeholderTextColor={c.textFaint}
                 inputMode={memoNumeric ? 'numeric' : 'text'}
@@ -427,6 +445,8 @@ export default function RegisterScreen({ navigation, route }) {
               <TextInput
                 style={[s.input, s.inputMulti]}
                 value={shortcut}
+                ref={shortcutRef}
+                onFocus={() => onTextFocus('shortcut', shortcutRef)}
                 onChangeText={setShortcut}
                 multiline
                 placeholderTextColor={c.textFaint}
@@ -436,6 +456,8 @@ export default function RegisterScreen({ navigation, route }) {
               <TextInput
                 style={[s.input, s.inputMulti]}
                 value={note}
+                ref={noteRef}
+                onFocus={() => onTextFocus('note', noteRef)}
                 onChangeText={setNote}
                 multiline
                 placeholderTextColor={c.textFaint}
