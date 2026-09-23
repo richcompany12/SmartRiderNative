@@ -2,7 +2,8 @@ import { useRef, useEffect, useState, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
   Animated, Dimensions, Pressable, Alert, ScrollView,
-  BackHandler, ActivityIndicator, Modal, TextInput
+  BackHandler, ActivityIndicator, Modal, TextInput,
+  Share, Linking 
 } from 'react-native';
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,6 +22,14 @@ import { invalidateBuildingsCache } from '../buildingsCache';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const PANEL_W = Math.min(300, SCREEN_W * 0.8);
+
+const GUIDE_URL = 'https://richcanopy.kr/smartrider/guide/';   // ★ 새 줄
+const SHARE_TEXT =                                               // ★ 새 줄
+  '요청사항, 또 열어보세요?\n' +                                  // ★ 새 줄
+  '한콜 부족해서 미션실패한적 있으시죠?\n' +                        // ★ 새 줄
+  '한 번 간 건물, 다음엔 헤매지 마세요.\n' +                        // ★ 새 줄
+  '현직 라이더가 만든 앱 · 스마트라이더\n' +                        // ★ 새 줄
+  'https://richcanopy.kr/smartrider/';                          // ★ 새 줄
 
 // 메뉴 한 줄. 터치 영역 48 이상.
 function MenuItem({ icon, label, onPress, badge, danger, s, c }) {
@@ -87,6 +96,27 @@ export default function Sidebar({ visible, onClose, navigation }) {
     onClose();
     setTimeout(() => navigation.navigate(screen, params || {}), 220);
   };
+
+  // 사용설명서 — 웹 페이지라 설명을 고쳐도 앱 심사 필요 없음      // ★ 새 줄
+  const openGuide = () => {                                        // ★ 새 줄
+    onClose();                                                     // ★ 새 줄
+    setTimeout(() => {                                             // ★ 새 줄
+      Linking.openURL(GUIDE_URL).catch(e =>                        // ★ 새 줄
+        Alert.alert('열 수 없음', e?.message || ''));               // ★ 새 줄
+    }, 220);                                                       // ★ 새 줄
+  };                                                               // ★ 새 줄
+
+  // 앱 공유 — 소개 페이지 링크. 공유 뒤 광고는 띄우지 않는다       // ★ 새 줄
+  const handleShare = () => {                                      // ★ 새 줄
+    onClose();                                                     // ★ 새 줄
+    setTimeout(async () => {                                       // ★ 새 줄
+      try {                                                        // ★ 새 줄
+        await Share.share({ message: SHARE_TEXT });                // ★ 새 줄
+      } catch (e) {                                                // ★ 새 줄
+        Alert.alert('공유 실패', e?.message || '');                 // ★ 새 줄
+      }                                                            // ★ 새 줄
+    }, 220);                                                       // ★ 새 줄
+  };                                                               // ★ 새 줄
 
   const handleLogout = () => {
     Alert.alert('로그아웃', '로그아웃 하시겠습니까?', [
@@ -299,8 +329,9 @@ export default function Sidebar({ visible, onClose, navigation }) {
 
           <View style={s.divider} />
 
-          <MenuItem s={s} c={c} icon="bullhorn-outline" label="공지사항" onPress={() => notReady('공지사항')} />
           <MenuItem s={s} c={c} icon="message-alert-outline" label="제보하기" onPress={() => go('Suggest')} />
+          <MenuItem s={s} c={c} icon="book-open-outline" label="사용설명서" onPress={openGuide} />
+          <MenuItem s={s} c={c} icon="share-variant-outline" label="앱 공유하기" onPress={handleShare} />
 
           <View style={s.divider} />
 

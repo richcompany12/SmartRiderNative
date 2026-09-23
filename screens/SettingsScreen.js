@@ -371,7 +371,7 @@ export default function SettingsScreen({ navigation }) {
 
         <View style={s.divider} />
 
-        {ALERT_TYPE_LIST.map(t => (
+        {ALERT_TYPE_LIST.filter(t => !t.soon).map(t => (      // ★ 바뀐 줄
           <ToggleRow
             s={s}
             key={t.key}

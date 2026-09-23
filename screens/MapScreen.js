@@ -93,7 +93,8 @@ export default function MapScreen({ navigation }) {
     };
 
     const near = buildings.filter(inRange);
-    const nearAlerts = alertPoints.filter(inRange);
+    // 알림지점은 전국 표시. 좌표 없는 것만 뺀다          // ★ 새 줄
+    const nearAlerts = alertPoints.filter(a => !!readLatLng(a));   // ★ 바뀐 줄
 
     // 배지 = 화면에 찍힌 핀 개수. 원본 배열 길이를 쓰지 않는다.
     setShown({
@@ -617,7 +618,7 @@ export default function MapScreen({ navigation }) {
           <View style={[styles.dot, { backgroundColor: '#DC2626', marginLeft: 10 }]} />
           <Text style={styles.legendText}>알림 {shown.alert}</Text>
         </View>
-        <Text style={styles.legendHint}>주변 {MAP_RADIUS_KM}km</Text>
+        <Text style={styles.legendHint}>건물 주변 {MAP_RADIUS_KM}km</Text>
       </View>
 
       {/* 내 위치 버튼 */}

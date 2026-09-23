@@ -74,6 +74,7 @@ export default function RegisterScreen({ navigation, route }) {
   const shortcutRef = useRef(null);                                     // ★ 새 줄
   const noteRef = useRef(null);                                         // ★ 새 줄
   const kbNumericRef = useRef(false);   // ★ 새 줄 — 지금 떠 있는 키보드가 숫자판인지
+  const selRef = useRef({});            // ★ 새 줄 — 칸별 마지막 커서 위치
 
   useEffect(() => {
     if (buildingData) {
@@ -94,10 +95,20 @@ export default function RegisterScreen({ navigation, route }) {
     return () => clearTimeout(t);
   }, []);
 
-  const insertTo = (field, ch) => {                                       // ★ 바뀐 줄
-    if (field === 'name') setName(p => (p + ch).slice(0, NAME_MAX));
-    else if (field === 'memo') setMemo(p => p + ch);
-    else if (field === 'memo2') setMemo2(p => p + ch);
+  // 커서 자리에 기호를 끼워넣고, 커서를 기호 바로 뒤로 옮긴다
+  const insertTo = (field, ch) => {                                           // ★ 바뀐 줄
+    const cur = field === 'name' ? name : field === 'memo' ? memo : memo2;    // ★ 새 줄
+    const setV = field === 'name' ? setName : field === 'memo' ? setMemo : setMemo2;  // ★ 새 줄
+    const ref = field === 'name' ? nameRef : field === 'memo' ? memoRef : memo2Ref;   // ★ 새 줄
+    const sel = selRef.current[field];                                        // ★ 새 줄
+    const start = sel ? Math.min(sel.start, cur.length) : cur.length;         // ★ 새 줄
+    const end = sel ? Math.min(sel.end, cur.length) : cur.length;             // ★ 새 줄
+    let next = cur.slice(0, start) + ch + cur.slice(end);                     // ★ 새 줄
+    if (field === 'name') next = next.slice(0, NAME_MAX);                     // ★ 새 줄
+    const pos = Math.min(start + ch.length, next.length);                     // ★ 새 줄
+    setV(next);                                                               // ★ 새 줄
+    selRef.current[field] = { start: pos, end: pos };                         // ★ 새 줄
+    setTimeout(() => ref.current?.setSelection?.(pos, pos), 30);              // ★ 새 줄
   };
 
   const toggleMemoKeyboard = () => {
@@ -374,6 +385,7 @@ export default function RegisterScreen({ navigation, route }) {
             onChangeText={setName}
             maxLength={NAME_MAX}
             onFocus={() => onTextFocus('name', nameRef)}
+            onSelectionChange={e => { selRef.current.name = e.nativeEvent.selection; }}   // ★ 새 줄
             placeholder={regMode === 'building' ? '예: 능동 헤리움' : '예: 주차단속 지역'}
             placeholderTextColor={c.textFaint}
           />
@@ -400,6 +412,7 @@ export default function RegisterScreen({ navigation, route }) {
                 value={memo}
                 onChangeText={setMemo}
                 onFocus={() => { setActiveField('memo'); kbNumericRef.current = memoNumeric; }}
+                onSelectionChange={e => { selRef.current.memo = e.nativeEvent.selection; }}   // ★ 새 줄
                 placeholder="예: 후문 계단이 빨라요"
                 placeholderTextColor={c.textFaint}
                 inputMode={memoNumeric ? 'numeric' : 'text'}
@@ -413,6 +426,7 @@ export default function RegisterScreen({ navigation, route }) {
                 value={memo2}
                 onChangeText={setMemo2}
                 onFocus={() => { setActiveField('memo2'); kbNumericRef.current = memoNumeric; }}
+                onSelectionChange={e => { selRef.current.memo2 = e.nativeEvent.selection; }}  // ★ 새 줄
                 placeholder="추가로 남길 메모"
                 placeholderTextColor={c.textFaint}
                 inputMode={memoNumeric ? 'numeric' : 'text'}

@@ -196,6 +196,8 @@ export default function DetailScreen({ navigation, route }) {
   const [building, setBuilding] = useState(null);
   const [editMode, setEditMode] = useState(route.params?.startEdit === true);
   const [memoField, setMemoField] = useState('memo');                     // ★ 새 줄
+  const selRef = useRef({});      // ★ 새 줄 — 칸별 마지막 커서 위치
+  const inputRefs = useRef({});   // ★ 새 줄 — 칸별 입력칸
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const [locationChanged, setLocationChanged] = useState(false);
@@ -428,10 +430,18 @@ export default function DetailScreen({ navigation, route }) {
   }
 
   const set = (k, v) => setBuilding(p => ({ ...p, [k]: v }));
-  const append = (k, ch, max) => setBuilding(p => {                       // ★ 새 줄
-    const v = (p[k] || '') + ch;                                          // ★ 새 줄
-    return { ...p, [k]: max ? v.slice(0, max) : v };                      // ★ 새 줄
-  });                                                                     // ★ 새 줄
+  const append = (k, ch, max) => {                                        // ★ 바뀐 줄
+    const cur = building[k] || '';                                        // ★ 새 줄
+    const sel = selRef.current[k];                                        // ★ 새 줄
+    const start = sel ? Math.min(sel.start, cur.length) : cur.length;     // ★ 새 줄
+    const end = sel ? Math.min(sel.end, cur.length) : cur.length;         // ★ 새 줄
+    let next = cur.slice(0, start) + ch + cur.slice(end);                 // ★ 새 줄
+    if (max) next = next.slice(0, max);                                   // ★ 새 줄
+    const pos = Math.min(start + ch.length, next.length);                 // ★ 새 줄
+    set(k, next);                                                         // ★ 새 줄
+    selRef.current[k] = { start: pos, end: pos };                         // ★ 새 줄
+    setTimeout(() => inputRefs.current[k]?.setSelection?.(pos, pos), 30); // ★ 새 줄
+  };                                                                    // ★ 새 줄
 
   return (
     <>
@@ -493,6 +503,8 @@ export default function DetailScreen({ navigation, route }) {
                   style={s.input}
                   value={building.name}
                   onChangeText={v => set('name', v.slice(0, 25))}
+                  ref={r => { inputRefs.current.name = r; }}                               // ★ 새 줄
+                  onSelectionChange={e => { selRef.current.name = e.nativeEvent.selection; }}  // ★ 새 줄
                   maxLength={25}
                   placeholderTextColor={c.textFaint}
                 />
@@ -504,6 +516,8 @@ export default function DetailScreen({ navigation, route }) {
                   value={building.memo}
                   onChangeText={v => set('memo', v)}
                   onFocus={() => setMemoField('memo')}
+                  ref={r => { inputRefs.current.memo = r; }}                               // ★ 새 줄
+                  onSelectionChange={e => { selRef.current.memo = e.nativeEvent.selection; }}  // ★ 새 줄
                   placeholder="예: 후문 계단이 빨라요"
                   placeholderTextColor={c.textFaint}
                   multiline
@@ -515,6 +529,8 @@ export default function DetailScreen({ navigation, route }) {
                   value={building.memo2}
                   onChangeText={v => set('memo2', v)}
                   onFocus={() => setMemoField('memo2')}
+                  ref={r => { inputRefs.current.memo2 = r; }}                              // ★ 새 줄
+                  onSelectionChange={e => { selRef.current.memo2 = e.nativeEvent.selection; }} // ★ 새 줄
                   placeholder="추가로 남길 메모"
                   placeholderTextColor={c.textFaint}
                   multiline
