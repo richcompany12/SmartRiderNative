@@ -232,6 +232,25 @@ class ProximityOverlayModule(private val reactContext: ReactApplicationContext)
         }
     }
 
+    // 플로팅 잠깐 숨기기 (설정값은 안 건드림). reason: "app" | "ad"              // ★ 새 줄
+    // 이미 돌고 있는 서비스에 신호만 준다. 백그라운드로 나가는 순간에도          // ★ 새 줄
+    // 불리므로 startForegroundService가 아니라 startService를 쓴다.             // ★ 새 줄
+    @ReactMethod                                                                   // ★ 새 줄
+    fun setFloatingHold(reason: String, on: Boolean, promise: Promise) {           // ★ 새 줄
+        try {                                                                      // ★ 새 줄
+            if (!hasLocationPermission()) { promise.resolve("no_permission"); return }  // ★ 새 줄
+            val intent = Intent(reactContext, ProximityOverlayService::class.java).apply {  // ★ 새 줄
+                action = ProximityOverlayService.ACTION_SET_FLOAT_HOLD             // ★ 새 줄
+                putExtra(ProximityOverlayService.EXTRA_REASON, reason)             // ★ 새 줄
+                putExtra(ProximityOverlayService.EXTRA_ENABLED, on)                // ★ 새 줄
+            }                                                                      // ★ 새 줄
+            reactContext.startService(intent)                                      // ★ 새 줄
+            promise.resolve("success")                                             // ★ 새 줄
+        } catch (e: Exception) {                                                   // ★ 새 줄
+            promise.resolve("skip")   // 서비스가 없거나 막히면 조용히 넘어감       // ★ 새 줄
+        }                                                                          // ★ 새 줄
+    }                                                                              // ★ 새 줄
+
     @ReactMethod
     fun showToast(payloadJson: String) {
         if (!hasLocationPermission()) return

@@ -10,10 +10,12 @@ import { useTheme } from '../theme';
 import {
   getSettings, setRadius, setFloating,
   setAlertDistance, setAlertSound, setAlertType,
+  setToastClick,                                                // ★ 새 줄
 } from '../settingsCache';
 import { getCachedBuildings, invalidateBuildingsCache } from '../buildingsCache';
 import { getAllAlertPoints } from '../firebaseDB';
 import { useAuth } from '../AuthContext';
+import { syncBuildingsToService } from './ProximityNotifier';   // ★ 새 줄
 import { countPersonalData } from '../personalDB';
 import {
   getMigrationState, importServerToPersonal, deleteOriginalsFromServer,
@@ -117,22 +119,10 @@ export default function SettingsScreen({ navigation }) {
     return () => sub.remove();
   }, []);
 
-  // 설정이 바뀔 때마다 Kotlin 서비스에 다시 넘긴다.
-  // 안 넘기면 앱에서만 바뀌고 실제 판정은 예전 값으로 돈다.
-  const pushBuildings = async (next) => {
-    try {
-      const buildings = await getCachedBuildings();
-      const slim = (buildings || [])
-        .filter(b => b.location?.lat && b.location?.lng)
-        .map(b => ({
-          id: String(b.id), name: b.name || '',
-          memo: b.memo || '', memo2: b.memo2 || '',
-          lat: b.location.lat, lng: b.location.lng,
-        }));
-      await ProximityOverlayModule?.setBuildings(
-        JSON.stringify({ radius: next.radius, buildings: slim })
-      );
-    } catch (e) {}
+  // 설정이 바뀌면 코틀린에 다시 넘긴다. 전달 코드는 한 곳(ProximityNotifier)만 쓴다  // ★ 바뀐 줄
+  // (여기서 따로 만들면 중요 배지·알림음 값이 빠져서 꺼져버린다)                    // ★ 새 줄
+  const pushBuildings = async () => {                                               // ★ 바뀐 줄
+    await syncBuildingsToService('설정 변경');                                       // ★ 바뀐 줄
   };
 
   const pushAlerts = async (next) => {
@@ -175,6 +165,12 @@ export default function SettingsScreen({ navigation }) {
     await setFloating(on);
     ProximityOverlayModule?.setFloatingButton?.(on).catch(() => {});
   };
+
+  const onToastClick = async (on) => {                          // ★ 새 줄
+    update({ toastClick: on });                                 // ★ 새 줄
+    await setToastClick(on);                                    // ★ 새 줄
+    pushBuildings();                                            // ★ 새 줄
+  };                                                            // ★ 새 줄
 
   const onAlertDistance = async (v) => {
     const next = update({ alertDistance: v });
@@ -347,6 +343,13 @@ export default function SettingsScreen({ navigation }) {
           value={settings.floating}
           onChange={onFloating}
         />
+        <ToggleRow
+          s={s}
+          label="토스트 알림음"
+          hint="건물 정보가 뜰 때 짧게 딸깍 · 폰이 무음이면 안 납니다"
+          value={settings.toastClick}
+          onChange={onToastClick}
+        />
       </View>
 
       {/* 강력 알림 */}
@@ -363,8 +366,8 @@ export default function SettingsScreen({ navigation }) {
         />
         <ToggleRow
           s={s}
-          label="알림음"
-          hint="끄면 화면에만 표시됩니다"
+          label="강력알림음"
+          hint="단속 지점 경고음 · 끄면 화면에만 표시됩니다"
           value={settings.alertSound}
           onChange={onAlertSound}
         />

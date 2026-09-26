@@ -609,6 +609,18 @@ export default function DetailScreen({ navigation, route }) {
                   </>
                 )}
 
+                  {(isMine || isAdmin) && (
+                  <TouchableOpacity
+                    style={[s.btnSub, { marginTop: 12 }, building.important && { borderColor: '#D93A2B', backgroundColor: 'rgba(217,58,43,0.08)' }]}
+                    onPress={() => set('important', !building.important)}
+                  >
+                    <Icon name={building.important ? 'alert' : 'alert-outline'} size={18} color={building.important ? '#D93A2B' : c.textSub} />
+                    <Text style={[s.btnSubText, building.important && { color: '#D93A2B', fontWeight: 'bold' }]}>
+                      {building.important ? '중요 표시됨 · 한 번 더 확인' : '중요 표시 (헷갈리는 건물)'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
                 {/* 위치 */}
                 <Text style={s.label}>위치</Text>
                 <View style={s.locBox}>
@@ -657,6 +669,11 @@ export default function DetailScreen({ navigation, route }) {
               </>
             ) : (
               <>
+                  {building.important && (
+                  <View style={{ alignSelf: 'flex-start', backgroundColor: '#D93A2B', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 4, marginBottom: 8 }}>
+                    <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 14 }}>⚠ 중요 · 한 번 더 확인</Text>
+                  </View>
+                )}
                 <Text style={s.name}>{building.name}</Text>
 
                 {/* 비번 — 라이더가 제일 급하게 보는 것이라 크게 보여준다 */}

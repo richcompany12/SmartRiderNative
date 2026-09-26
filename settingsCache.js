@@ -13,6 +13,7 @@ const FLOATING_KEY = 'floating_enabled';
 const ALERT_DISTANCE_KEY = 'alert_distance';
 const ALERT_SOUND_KEY = 'alert_sound';
 const ALERT_TYPES_KEY = 'alert_types';
+const TOAST_CLICK_KEY = 'toast_click';                          // ★ 새 줄
 
 const DEFAULT_ALERT_DISTANCE = 100;     // 강력알림 진입 거리 (m)
 
@@ -53,6 +54,7 @@ export const getSettings = async () => {
     floating: await readBool(FLOATING_KEY, true),
     alertDistance: await readInt(ALERT_DISTANCE_KEY, DEFAULT_ALERT_DISTANCE),
     alertSound: await readBool(ALERT_SOUND_KEY, true),
+    toastClick: await readBool(TOAST_CLICK_KEY, true),          // ★ 새 줄
     alertTypes: types,
   };
   return _cache;
@@ -102,3 +104,13 @@ export const setAlertType = async (key, on) => {
   s.alertTypes = { ...s.alertTypes, [key]: on };
   try { await AsyncStorage.setItem(ALERT_TYPES_KEY, JSON.stringify(s.alertTypes)); } catch (e) {}
 };
+
+
+// ── 토스트 알림음 (강력알림음과 별개) ──                          // ★ 새 줄
+export const getToastClick = async () => (await getSettings()).toastClick;   // ★ 새 줄
+
+export const setToastClick = async (on) => {                    // ★ 새 줄
+  const s = await getSettings();                                // ★ 새 줄
+  s.toastClick = on;                                            // ★ 새 줄
+  try { await AsyncStorage.setItem(TOAST_CLICK_KEY, String(on)); } catch (e) {}  // ★ 새 줄
+};                                                              // ★ 새 줄

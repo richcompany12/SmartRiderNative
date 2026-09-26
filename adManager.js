@@ -23,16 +23,13 @@ let actionCount = 0;
 let lastShownAt = 0;
 let started = false;
 
-// ── 광고가 떠 있는 동안 플로팅버튼 숨기기 ──                                   // ★ 새 블록
-// 애드몹은 광고 위를 다른 것이 가리거나 실수로 눌리게 하는 것을 금지한다.
-// 설정값(AsyncStorage)은 건드리지 않고, 코틀린에만 잠깐 끄라고 한다.
+// 광고 중에는 플로팅 숨김. 설정값은 절대 안 건드린다.          // ★ 바뀐 줄
+// 닫힘 신호를 놓쳐도 코틀린이 90초 뒤 알아서 풀어준다.          // ★ 새 줄
 function hideFloating() {
-  try { ProximityOverlayModule?.setFloatingButton?.(false)?.catch?.(() => {}); } catch (e) {}
+  try { ProximityOverlayModule?.setFloatingHold?.('ad', true)?.catch?.(() => {}); } catch (e) {}   // ★ 바뀐 줄
 }
-async function restoreFloating() {
-  try {
-    if (await getFloating()) await ProximityOverlayModule?.setFloatingButton?.(true);
-  } catch (e) {}
+function restoreFloating() {                                                                       // ★ 바뀐 줄 (async 삭제)
+  try { ProximityOverlayModule?.setFloatingHold?.('ad', false)?.catch?.(() => {}); } catch (e) {}  // ★ 바뀐 줄
 }
 
 function load() {

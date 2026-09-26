@@ -49,7 +49,7 @@ export const syncBuildingsToService = async (reason) => {
   try {
     if (!ProximityOverlayModule) return;
 
-    const [buildings, radius] = await Promise.all([getCachedBuildings(), getRadius()]);
+    const [buildings, radius, settings] = await Promise.all([getCachedBuildings(), getRadius(), getSettings()]);  // ★ 바뀐 줄
     if (!buildings || buildings.length === 0) {
       console.log('[PROX] 건물 캐시가 비어 있어 전달 보류');
       return;
@@ -62,11 +62,12 @@ export const syncBuildingsToService = async (reason) => {
         name: b.name || '',
         memo: b.memo || '',
         memo2: b.memo2 || '',
+        important: b.important === true,                        // ★ 새 줄
         lat: b.location.lat,
         lng: b.location.lng,
       }));
 
-    await ProximityOverlayModule.setBuildings(JSON.stringify({ radius, buildings: slim }));
+    await ProximityOverlayModule.setBuildings(JSON.stringify({ radius, click: settings.toastClick, buildings: slim }));  // ★ 바뀐 줄
     lastSyncAt = Date.now();
     console.log(`[PROX] 건물 ${slim.length}개 Kotlin에 전달 (${reason}), 반경 ${radius}m`);
   } catch (e) {
@@ -130,6 +131,7 @@ export default function ProximityNotifier() {
       if (has) {
         await ProximityOverlayModule.startService();
         console.log('[PROX] Kotlin 서비스 시작 요청');
+         ProximityOverlayModule.setFloatingHold?.('app', true)?.catch?.(() => {});  // ★ 바뀐 줄 — 이 코드가 도는 순간은 항상 앱 화면 안
       }
     } catch (e) {
       console.log('[PROX] 서비스 시작 실패', e?.message || e);
@@ -206,6 +208,8 @@ export default function ProximityNotifier() {
 
     // 앱으로 돌아올 때마다 건물 목록 갱신 (너무 잦으면 건너뜀)
     const appStateSub = AppState.addEventListener('change', async (nextState) => {   // ★ async 추가
+      // 우리 앱이 보이는 동안은 플로팅 숨김, 나가면 다시 보임                           // ★ 새 줄
+      ProximityOverlayModule?.setFloatingHold?.('app', nextState === 'active')?.catch?.(() => {});  // ★ 새 줄
       if (nextState !== 'active') return;
       if (Date.now() - lastSyncAt < 30000) return;
 

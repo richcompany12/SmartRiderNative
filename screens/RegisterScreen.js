@@ -56,6 +56,7 @@ export default function RegisterScreen({ navigation, route }) {
   const [memo2, setMemo2] = useState(buildingData?.memo2 || '');
   const [note, setNote] = useState(buildingData?.note || '');
   const [shortcut, setShortcut] = useState(buildingData?.shortcut || '');
+  const [important, setImportant] = useState(buildingData?.important === true);   // ★ 새 줄
 
   // 위치. 위치가 없으면 근접 토스트가 뜨지 않는다.
   const [location, setLocationState] = useState(
@@ -190,6 +191,7 @@ export default function RegisterScreen({ navigation, route }) {
         memo: memo.trim(),
         memo2: memo2.trim(),
         note, shortcut,
+        important,                                              // ★ 새 줄
         images: buildingData?.images || [],
         timestamp: Date.now(),
       };
@@ -454,6 +456,18 @@ export default function RegisterScreen({ navigation, route }) {
                   {favorite ? '즐겨찾기 해제' : '즐겨찾기에 추가'}
                 </Text>
               </TouchableOpacity>
+
+              {!(editingScope === 'public' && saveScope === 'personal') && (
+                <TouchableOpacity
+                  style={[s.favBtn, important && { borderColor: '#D93A2B', backgroundColor: 'rgba(217,58,43,0.08)' }]}
+                  onPress={() => setImportant(v => !v)}
+                >
+                  <Icon name={important ? 'alert' : 'alert-outline'} size={19} color={important ? '#D93A2B' : c.textSub} />
+                  <Text style={[s.favText, important && { color: '#D93A2B', fontWeight: 'bold' }]}>
+                    {important ? '중요 표시됨 · 한 번 더 확인' : '중요 표시 (헷갈리는 건물)'}
+                  </Text>
+                </TouchableOpacity>
+              )}
 
               <Text style={s.label}>샛길 정보</Text>
               <TextInput

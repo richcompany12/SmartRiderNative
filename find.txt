@@ -1,0 +1,1 @@
+screens\ProximityNotifier.js:70:    await ProximityOverlayModule.setBuildings(JSON.stringify({ radius, buildings: slim }));

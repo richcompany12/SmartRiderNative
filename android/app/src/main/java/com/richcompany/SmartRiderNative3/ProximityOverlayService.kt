@@ -63,7 +63,8 @@ class ProximityOverlayService : Service() {
         val memo: String,
         val memo2: String,          // 백업 출입정보 (없으면 빈 문자열)
         val lat: Double,
-        val lng: Double
+        val lng: Double,                            // ★ 쉼표 추가
+        val important: Boolean = false              // ★ 새 줄 — 중요 배지
     )
 
     // 강력 알림 지점 (후방카메라 / 주차단속 등)
@@ -110,6 +111,9 @@ class ProximityOverlayService : Service() {
     private var panelView: View? = null
     private var panelCloseRunnable: Runnable? = null
     private var floatingEnabled = true
+    private var appVisible = false      // 우리 앱이 화면에 떠 있으면 플로팅 숨김   // ★ 새 줄
+    private var adHoldUntil = 0L        // 광고 중 숨김 (시간 지나면 자동 해제)     // ★ 새 줄
+    private var toastClickOn = true     // 토스트 클릭음                          // ★ 새 줄
     private lateinit var prefs: SharedPreferences
 
     // 최근 좌표 (지도 이동 / 패널 계산용)
@@ -157,6 +161,9 @@ class ProximityOverlayService : Service() {
         const val PANEL_MAX_ITEMS = 5
         const val PREFS = "prox_prefs"
         const val KEY_FLOATING = "floating_enabled"
+        const val ACTION_SET_FLOAT_HOLD = "com.richcompany.smartridernative3.SET_FLOAT_HOLD"  // ★ 새 줄
+        const val EXTRA_REASON = "reason"                                                   // ★ 새 줄
+        const val AD_HOLD_MAX = 90000L   // 광고 숨김 최대 90초. 닫힘 신호를 놓쳐도 자동 복구  // ★ 새 줄
 
         // 강력 알림
         const val ALERT_AUTO_DISMISS = 30000L      // 일반 토스트(15초)보다 길게
@@ -208,6 +215,11 @@ class ProximityOverlayService : Service() {
                 val on = intent.getBooleanExtra(EXTRA_ENABLED, true)
                 handler.post { setFloatingEnabled(on) }
             }
+            ACTION_SET_FLOAT_HOLD -> {                                             // ★ 새 줄
+                val reason = intent.getStringExtra(EXTRA_REASON) ?: ""             // ★ 새 줄
+                val on = intent.getBooleanExtra(EXTRA_ENABLED, false)              // ★ 새 줄
+                handler.post { setFloatingHold(reason, on) }                       // ★ 새 줄
+            }                                                                      // ★ 새 줄
             ACTION_SET_BUILDINGS -> {
                 val json = intent.getStringExtra(EXTRA_PAYLOAD)
                 if (json != null) handler.post { setBuildings(json) }
@@ -281,6 +293,23 @@ class ProximityOverlayService : Service() {
         stopForeground(STOP_FOREGROUND_REMOVE)
     }
 
+    // 최근 앱 목록에서 밀어서 끄면 "앱 화면" 신호가 안 온다 → 여기서 풀어준다   // ★ 새 줄
+    override fun onTaskRemoved(rootIntent: Intent?) {                              // ★ 새 줄
+        super.onTaskRemoved(rootIntent)                                            // ★ 새 줄
+        appVisible = false                                                         // ★ 새 줄
+        adHoldUntil = 0L                                                           // ★ 새 줄
+        if (floatingEnabled) handler.post { showFloatingButton() }                 // ★ 새 줄
+    }                                                                              // ★ 새 줄
+
+    // 화면이 돌아가면 버튼을 다시 화면 안으로                                     // ★ 새 줄
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {  // ★ 새 줄
+        super.onConfigurationChanged(newConfig)                                    // ★ 새 줄
+        val v = floatingView ?: return                                             // ★ 새 줄
+        val p = floatingParams ?: return                                           // ★ 새 줄
+        clampFab(p)                                                                // ★ 새 줄
+        try { windowManager.updateViewLayout(v, p) } catch (e: Exception) {}       // ★ 새 줄
+    }                                                                              // ★ 새 줄
+
     // ────────────────────────────────────────────
     //  건물 목록 (JS가 넘겨줌)
     // ────────────────────────────────────────────
@@ -289,6 +318,7 @@ class ProximityOverlayService : Service() {
         try {
             val root = JSONObject(json)
             radius = root.optDouble("radius", 20.0)
+            toastClickOn = root.optBoolean("click", true)                          // ★ 새 줄
             val arr: JSONArray = root.getJSONArray("buildings")
             val list = ArrayList<Building>(arr.length())
 
@@ -303,6 +333,7 @@ class ProximityOverlayService : Service() {
                         name = b.optString("name", ""),
                         memo = b.optString("memo", ""),
                         memo2 = b.optString("memo2", ""),
+                        important = b.optBoolean("important", false),              // ★ 새 줄
                         lat = lat,
                         lng = lng
                     )
@@ -492,6 +523,7 @@ class ProximityOverlayService : Service() {
             payload.put("name", b.name)
             payload.put("memo", b.memo)
             payload.put("memo2", b.memo2)
+            payload.put("important", b.important)                                  // ★ 새 줄
             payload.put("dist", fresh[0].second.toInt())   // 토스트에 "45m" 표시용
         } else {
             payload.put("type", "cluster")
@@ -502,6 +534,7 @@ class ProximityOverlayService : Service() {
                 o.put("name", b.name)
                 o.put("memo", b.memo)
                 o.put("memo2", b.memo2)
+                o.put("important", b.important)                                    // ★ 새 줄
                 arr.put(o)
             }
             payload.put("candidates", arr)
@@ -655,6 +688,31 @@ class ProximityOverlayService : Service() {
             playFallbackSound()
         }
     }
+
+    // 토스트 클릭음. 알림 볼륨을 따른다 → 무음·진동 모드면 안 난다             // ★ 새 줄
+    // res/raw/toast_click 파일이 없으면 조용히 넘어간다 (빌드 에러 안 남)       // ★ 새 줄
+    private fun playToastClick() {                                                 // ★ 새 줄
+        if (!toastClickOn) return                                                  // ★ 새 줄
+        val resId = resources.getIdentifier("toast_click", "raw", packageName)     // ★ 새 줄
+        if (resId == 0) return                                                     // ★ 새 줄
+        try {                                                                      // ★ 새 줄
+            val mp = android.media.MediaPlayer()                                   // ★ 새 줄
+            mp.setAudioAttributes(                                                 // ★ 새 줄
+                android.media.AudioAttributes.Builder()                            // ★ 새 줄
+                    .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION_EVENT)       // ★ 새 줄
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION) // ★ 새 줄
+                    .build()                                                       // ★ 새 줄
+            )                                                                      // ★ 새 줄
+            mp.setDataSource(applicationContext,                                   // ★ 새 줄
+                android.net.Uri.parse("android.resource://$packageName/$resId"))   // ★ 새 줄
+            mp.setOnCompletionListener { it.release() }                            // ★ 새 줄
+            mp.setOnErrorListener { p, _, _ -> try { p.release() } catch (e: Exception) {}; true }  // ★ 새 줄
+            mp.prepare()                                                           // ★ 새 줄
+            mp.start()                                                             // ★ 새 줄
+        } catch (e: Exception) {                                                   // ★ 새 줄
+            android.util.Log.e(TAG, "클릭음 실패: " + e.message)                    // ★ 새 줄
+        }                                                                          // ★ 새 줄
+    }                                                                              // ★ 새 줄
 
     // 음원이 없거나 깨졌을 때의 안전망. 예전 동작 그대로.
     private fun playFallbackSound() {
@@ -825,6 +883,29 @@ class ProximityOverlayService : Service() {
         android.util.Log.d(TAG, "플로팅 버튼 " + if (on) "켜짐" else "꺼짐")
     }
 
+    // 잠깐 숨김 중인가 (설정값과 별개)                                             // ★ 새 줄
+    private fun floatingHeld(): Boolean =                                          // ★ 새 줄
+        appVisible || System.currentTimeMillis() < adHoldUntil                     // ★ 새 줄
+
+    // reason: "app"(우리 앱 화면) | "ad"(광고 중). 설정값은 절대 안 건드린다       // ★ 새 줄
+    private fun setFloatingHold(reason: String, on: Boolean) {                     // ★ 새 줄
+        when (reason) {                                                            // ★ 새 줄
+            "app" -> appVisible = on                                               // ★ 새 줄
+            "ad" -> adHoldUntil = if (on) System.currentTimeMillis() + AD_HOLD_MAX else 0L  // ★ 새 줄
+        }                                                                          // ★ 새 줄
+        if (floatingHeld()) { hidePanel(); hideFloatingButton() }                  // ★ 새 줄
+        else if (floatingEnabled) showFloatingButton()                             // ★ 새 줄
+        android.util.Log.d(TAG, "플로팅 숨김[$reason]=$on")                        // ★ 새 줄
+    }                                                                              // ★ 새 줄
+
+    // 버튼이 화면 밖으로 못 나가게                                                 // ★ 새 줄
+    private fun clampFab(p: WindowManager.LayoutParams) {                          // ★ 새 줄
+        val dm = resources.displayMetrics                                          // ★ 새 줄
+        val size = dp(52)                                                          // ★ 새 줄
+        p.x = p.x.coerceIn(0, maxOf(0, dm.widthPixels - size))                     // ★ 새 줄
+        p.y = p.y.coerceIn(0, maxOf(0, dm.heightPixels - size))                    // ★ 새 줄
+    }                                                                              // ★ 새 줄
+
     // ★ 여기부터 새 함수 2개 ─────────────────────────────
 
     /**
@@ -836,6 +917,7 @@ class ProximityOverlayService : Service() {
      */
     private fun ensureFloatingButton() {
         if (!floatingEnabled) return        // 사용자가 끈 상태면 건드리지 않는다
+        if (floatingHeld()) return          // ★ 새 줄 — 앱 화면/광고 중
         if (floatingView != null) return    // 이미 떠 있으면 할 일 없음
         if (!hasOverlay()) return           // 아직 권한 없음. 다음 바퀴에 다시 본다
         android.util.Log.d(TAG, "권한 확인됨 - 플로팅 버튼 자동 재시도")
@@ -867,6 +949,7 @@ class ProximityOverlayService : Service() {
 
     private fun showFloatingButton() {
         if (floatingView != null) return
+        if (floatingHeld()) return                                    // ★ 새 줄
         if (!hasOverlay()) {                                          // ★ 새 줄
             android.util.Log.d(TAG, "오버레이 권한 없음 - 표시 보류")   // ★ 새 줄
             return                                                    // ★ 새 줄
@@ -898,6 +981,7 @@ class ProximityOverlayService : Service() {
                 x = prefs.getInt("fab_x", dp(12))
                 y = prefs.getInt("fab_y", dp(300))
             }
+            clampFab(p)                                               // ★ 새 줄 — 예전에 밖으로 저장된 위치도 안으로
 
             var downX = 0f
             var downY = 0f
@@ -924,6 +1008,7 @@ class ProximityOverlayService : Service() {
                             // 스냅 없이 자유롭게 이동
                             p.x = startPX + dx.toInt()
                             p.y = startPY + dy.toInt()
+                            clampFab(p)                               // ★ 새 줄
                             try { windowManager.updateViewLayout(btn, p) } catch (e: Exception) {}
                             hidePanel()
                         }
@@ -932,6 +1017,7 @@ class ProximityOverlayService : Service() {
                     MotionEvent.ACTION_UP -> {
                         btn.alpha = 0.7f          // 손을 떼면 다시 물러난다
                         if (moved) {
+                            clampFab(p)                               // ★ 새 줄
                             prefs.edit().putInt("fab_x", p.x).putInt("fab_y", p.y).apply()
                         } else if (System.currentTimeMillis() - downAt < 500) {
                             togglePanel()
@@ -1357,6 +1443,7 @@ class ProximityOverlayService : Service() {
             val sb = StringBuilder()
             for (i in 0 until candidates.length()) {
                 val c = candidates.getJSONObject(i)
+                if (c.optBoolean("important", false)) sb.append("⚠ ")    // ★ 새 줄
                 sb.append(c.optString("name", ""))
                 val m1 = c.optString("memo", "")
                 val m2 = c.optString("memo2", "")
@@ -1398,6 +1485,29 @@ class ProximityOverlayService : Service() {
                 distView.visibility = View.GONE
             }
         }
+
+        // 중요 건물이면 맨 위에 빨간 배지. 테두리는 안 바꾼다 (주황=고정, 빨강=강력알림)   // ★ 새 줄
+        val isImportant = if (type == "cluster") {                                        // ★ 새 줄
+            val arr = payload.optJSONArray("candidates")                                  // ★ 새 줄
+            arr != null && (0 until arr.length()).any { arr.getJSONObject(it).optBoolean("important", false) }  // ★ 새 줄
+        } else payload.optBoolean("important", false)                                    // ★ 새 줄
+        if (isImportant) {                                                                // ★ 새 줄
+            val badge = TextView(this).apply {                                            // ★ 새 줄
+                text = if (type == "cluster") "⚠ 중요 건물 포함 · 한 번 더 확인" else "⚠ 중요 · 한 번 더 확인"  // ★ 새 줄
+                setTextColor(Color.WHITE)                                                 // ★ 새 줄
+                textSize = 14f                                                            // ★ 새 줄
+                setTypeface(typeface, android.graphics.Typeface.BOLD)                     // ★ 새 줄
+                setPadding(dp(10), dp(4), dp(10), dp(4))                                  // ★ 새 줄
+                background = GradientDrawable().apply {                                   // ★ 새 줄
+                    cornerRadius = dp(6).toFloat()                                        // ★ 새 줄
+                    setColor(Color.parseColor("#D93A2B"))                                 // ★ 새 줄
+                }                                                                         // ★ 새 줄
+            }                                                                             // ★ 새 줄
+            val lp = LinearLayout.LayoutParams(                                           // ★ 새 줄
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT  // ★ 새 줄
+            ).apply { bottomMargin = dp(6) }                                              // ★ 새 줄
+            (view as? LinearLayout)?.addView(badge, 0, lp)                                // ★ 새 줄
+        }                                                                                 // ★ 새 줄
 
         hintView.text = if (type == "cluster") "두 번 탭 → 앱 열기" else "두 번 탭 → 상세보기"
         // 힌트를 처음부터 보여준다. 어떻게 쓰는지 모르면 기능이 없는 것과 같다
@@ -1481,6 +1591,7 @@ class ProximityOverlayService : Service() {
 
         try {
             windowManager.addView(view, params)
+            playToastClick()                                          // ★ 새 줄
         } catch (e: Exception) {
             e.printStackTrace()
         }
