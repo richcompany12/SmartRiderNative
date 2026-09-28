@@ -230,8 +230,8 @@ export default function DetailScreen({ navigation, route }) {
             if (note) {
               data.publicMemo = data.memo || '';
               data.publicMemo2 = data.memo2 || '';
-              data.memo = note.memo || data.memo || '';
-              data.memo2 = note.memo2 || data.memo2 || '';
+                data.memo = note.memo || data.memo || '';
+              data.memo2 = isAdmin ? (data.memo2 || '') : (note.memo2 || data.memo2 || '');   // ★ 바뀐 줄 — 어드민은 공용 메모2를 그대로 본다
               data.hasPersonalNote = true;
             }
           }
@@ -318,7 +318,9 @@ export default function DetailScreen({ navigation, route }) {
       if (isMine) {
         await savePersonalBuilding(payload);
       } else if (isAdmin) {
-        await updateBuilding(payload);
+        const { publicMemo, publicMemo2, hasPersonalNote, isFav, scope, ...clean } = payload;   // ★ 새 줄 — 화면용 값은 서버에 안 올림
+        await updateBuilding({ ...clean, memo: '' });                                          // ★ 바뀐 줄 — 메모1은 서버에 안 올림
+        await savePersonalNote(buildingId, { memo: building.memo, memo2: '' });                // ★ 새 줄 — 비번은 내 폰에만
       } else {
         // 일반 사용자가 공용 건물을 수정 → 출입 정보만 내 폰에 붙인다.
         await savePersonalNote(buildingId, {
@@ -486,7 +488,7 @@ export default function DetailScreen({ navigation, route }) {
                 {!isMine && isAdmin && (
                   <View style={s.warnBox}>
                     <Text style={s.warnText}>
-                      공용 데이터를 수정합니다. 도착 메모를 넣으면 모든 사용자에게 공개됩니다.
+                      공용 데이터를 수정합니다.{'\n'}도착 메모는 내 폰에만 저장되고, 도착 메모 2는 모든 사용자에게 공개됩니다.   {/* ★ 바뀐 줄 */}
                     </Text>
                   </View>
                 )}

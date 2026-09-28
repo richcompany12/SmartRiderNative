@@ -4,7 +4,7 @@ import * as Notifications from 'expo-notifications';
 import { AppState, NativeModules, DeviceEventEmitter } from 'react-native';
 import { StackActions } from '@react-navigation/native';
 import { getCachedBuildings } from '../buildingsCache';
-import { getAllAlertPoints } from '../firebaseDB';
+import { syncAlertsToService } from '../alertSync';            // ★ 바뀐 줄 — 알림 전달은 alertSync 하나로
 import { getRadius, getSettings } from '../settingsCache';
 import { navigateTo, navigationRef } from '../navigationRef';
 
@@ -82,36 +82,8 @@ export default function ProximityNotifier() {
 
   const syncBuildings = syncBuildingsToService;   // ★ 바뀐 줄 — 본체는 파일 위쪽으로 옮김
 
-  // 강력 알림 지점을 Kotlin 서비스에 전달
-  // (판정도, "안 볼래" 기록도 전부 Kotlin이 한다. 앱이 꺼져 있어도 동작해야 하므로)
-  const syncAlerts = async (reason) => {
-    try {
-      if (!ProximityOverlayModule?.setAlertPoints) return;
-
-      const [points, settings] = await Promise.all([getAllAlertPoints(), getSettings()]);
-      const slim = (points || [])
-        .filter(a => a.location?.lat && a.location?.lng)
-        // 설정에서 꺼둔 종류는 아예 넘기지 않는다
-        .filter(a => settings.alertTypes[a.alertType || 'etc'] !== false)
-        .map(a => ({
-          id: String(a.id),
-          name: a.name || '',
-          type: a.alertType || 'etc',
-          lat: a.location.lat,
-          lng: a.location.lng,
-        }));
-
-      await ProximityOverlayModule.setAlertPoints(JSON.stringify({
-        enterRadius: settings.alertDistance,
-        exitRadius: settings.alertDistance * 2,
-        sound: settings.alertSound,
-        points: slim,
-      }));
-      console.log(`[PROX] 알림지점 ${slim.length}개 Kotlin에 전달 (${reason})`);
-    } catch (e) {
-      console.log('[PROX] 알림지점 전달 실패', e?.message || e);
-    }
-  };
+  // 강력 알림 지점 전달 — 본체는 alertSync.js (주변 15km만 넘긴다)
+  const syncAlerts = syncAlertsToService;                        // ★ 바뀐 줄
 
   const setup = async () => {
     // ★ 여기서는 권한을 "요청"하지 않고 "확인"만 한다.

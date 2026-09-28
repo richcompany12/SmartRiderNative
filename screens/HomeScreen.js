@@ -12,6 +12,7 @@ import AlertRow from './AlertRow';
 import { copyBuildingMemo } from '../copyUtil';
 import { getCachedBuildings } from '../buildingsCache';
 import { getAllAlertPoints } from '../firebaseDB';
+import { getCenter, distanceKm, ALERT_RADIUS_KM } from '../alertSync';   // ★ 새 줄
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';           // ★ 새 줄
@@ -40,6 +41,8 @@ const SORTS = [
 export default function HomeScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const { isAdmin } = useAuth();
+  const isAdminRef = useRef(isAdmin);          // ★ 새 줄 — load 안에서 항상 최신 역할을 보려고
+  isAdminRef.current = isAdmin;                // ★ 새 줄
   const { c, font, space, radius, TAP } = useTheme();
   const s = useMemo(() => makeStyles(c, font, space, radius, TAP), [c]);
 
@@ -70,7 +73,18 @@ export default function HomeScreen({ navigation }) {
     // 알림지점은 곁다리다. 실패해도 건물 목록은 그대로 보여야 한다.
     try {
       const aList = await getAllAlertPoints();
-      setAlerts([...aList].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)));
+      let shownAlerts = aList;                                                         // ★ 새 줄
+      // 일반 라이더는 내 주변만. 어드민은 전국을 관리해야 하니 전체
+      if (!isAdminRef.current) {                                                       // ★ 새 줄
+        const center = await getCenter();                                              // ★ 새 줄
+        if (center) {                                                                  // ★ 새 줄
+          shownAlerts = aList.filter(a =>                                              // ★ 새 줄
+            a.location?.lat && a.location?.lng &&                                      // ★ 새 줄
+            distanceKm(center.lat, center.lng, a.location.lat, a.location.lng) <= ALERT_RADIUS_KM   // ★ 새 줄
+          );                                                                           // ★ 새 줄
+        }                                                                              // ★ 새 줄
+      }                                                                                // ★ 새 줄
+      setAlerts([...shownAlerts].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)));   // ★ 바뀐 줄
     } catch (e) {
       setAlerts([]);
       console.log('알림지점 로드 실패:', e?.message);
@@ -201,7 +215,7 @@ export default function HomeScreen({ navigation }) {
   const emptyText = {
     fav: '즐겨찾기한 건물이 없습니다.\n건물 상세에서 ★ 를 눌러 추가하세요.',
     public: '공용 건물이 없습니다.',
-    alert: '등록된 강력알림 지점이 없습니다.',
+    alert: isAdmin ? '등록된 강력알림 지점이 없습니다.' : `내 주변 ${ALERT_RADIUS_KM}km 안에 강력알림 지점이 없습니다.`,   // ★ 바뀐 줄
     all: '등록된 건물이 없습니다.',
   }[tab];
 

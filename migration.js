@@ -112,13 +112,13 @@ export const promoteToPublic = async (building) => {
   const newId = await saveBuilding({
     ...rest,
     memo: '',
-    memo2: '',
+    memo2: (memo2 || '').trim(),          // ★ 바뀐 줄 — 메모2는 공용 안내로 올라간다
     promotedAt: Date.now(),
   });
 
-  // 비번은 내 폰에만 남긴다 (새 공용 id에 붙여서)
-  if ((memo || '').trim() || (memo2 || '').trim()) {
-    await savePersonalNote(newId, { memo, memo2 });
+  // 비번(메모1)은 내 폰에만 남긴다 (새 공용 id에 붙여서)
+  if ((memo || '').trim()) {                                  // ★ 바뀐 줄
+    await savePersonalNote(newId, { memo, memo2: '' });       // ★ 바뀐 줄
   }
 
   // 개인 사본은 지운다. 안 지우면 목록에 두 번 나온다.

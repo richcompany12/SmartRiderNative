@@ -20,7 +20,7 @@ import { getPersonalBuildings, getPersonalNotes, getFavorites } from './personal
 
 let _publicCache = null;
 let _publicCacheTime = 0;
-const CACHE_TTL = 3 * 60 * 60 * 1000; // 3시간
+const CACHE_TTL = 10 * 60 * 1000; // ★ 바뀐 줄 — 10분. 버전 숫자로 확인하니 자주 봐도 요금 거의 없음
 
 // ★ 새 줄 — 서버가 대답이 없으면 정해진 시간 뒤 포기 (비행기모드·지하 무한 로딩 방지)
 const SERVER_TIMEOUT = 12000;   // ★ 바뀐 줄 — 안쪽(firebaseDB)에서 4초+6초로 먼저 처리한다                                            // ★ 새 줄

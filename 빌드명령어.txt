@@ -1,0 +1,5 @@
+cd /d D:\app\SmartRiderNative3\android
+
+gradlew.bat assembleRelease -x lint -x lintVitalAnalyzeRelease
+
+adb install -r D:\app\SmartRiderNative3\android\app\build\outputs\apk\release\app-release.apk

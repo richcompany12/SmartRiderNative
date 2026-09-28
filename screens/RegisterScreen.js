@@ -158,15 +158,15 @@ export default function RegisterScreen({ navigation, route }) {
     });
   };
 
-  // 공용에 비밀번호를 올리려 할 때 한 번 더 물어본다.
+  // 공용 저장 시 메모2만 확인한다. 메모1은 자동으로 내 폰에만 저장된다.
   const confirmPublicMemo = () => new Promise((resolve) => {
-    if (!memo.trim() && !memo2.trim()) { resolve(true); return; }
+    if (!memo2.trim()) { resolve(true); return; }                          // ★ 바뀐 줄
     Alert.alert(
       '공용으로 저장합니다',
-      '도착 메모가 모든 사용자에게 공개됩니다.\n개인적인 메모는 "내 폰에만"으로 저장하세요.',
+      '도착 메모 2는 모든 사용자에게 공개됩니다.\n비밀번호가 들어 있지 않은지 확인하세요.\n\n(도착 메모 1은 내 폰에만 저장됩니다)',   // ★ 바뀐 줄
       [
-        { text: '개인으로 바꾸기', style: 'cancel', onPress: () => resolve(false) },
-        { text: '그대로 공용 저장', style: 'destructive', onPress: () => resolve(true) },
+        { text: '다시 확인', style: 'cancel', onPress: () => resolve(false) },   // ★ 바뀐 줄
+        { text: '공용 저장', onPress: () => resolve(true) },                    // ★ 바뀐 줄
       ]
     );
   });
@@ -181,7 +181,7 @@ export default function RegisterScreen({ navigation, route }) {
 
     if (regMode === 'building' && scope === 'public') {
       const ok = await confirmPublicMemo();
-      if (!ok) { setSaveScope('personal'); return; }
+      if (!ok) return;          // ★ 바뀐 줄 — 개인으로 안 바꾸고 화면에 머문다
     }
 
     setIsSaving(true);
@@ -214,7 +214,8 @@ export default function RegisterScreen({ navigation, route }) {
 
       } else if (scope === 'public') {
         savedId = editingId || Date.now().toString();
-        await saveBuilding({ ...data, id: savedId });
+        await saveBuilding({ ...data, id: savedId, memo: '' });              // ★ 바뀐 줄 — 메모1은 서버에 안 올림
+        await savePersonalNote(savedId, { memo: data.memo, memo2: '' });     // ★ 새 줄 — 비번은 내 폰에만
         invalidateBuildingsCache();
 
       } else if (editingScope === 'public' && editingId) {
@@ -398,7 +399,9 @@ export default function RegisterScreen({ navigation, route }) {
             <>
                {/* 도착 메모 */}
               <View style={s.labelRow}>
-                <Text style={s.label}>도착 메모</Text>
+                <Text style={s.label}>
+                  도착 메모{isAdmin && saveScope === 'public' ? '  🔒 내 폰에만' : ''}       {/* ★ 바뀐 줄 */}
+                </Text>
                 <TouchableOpacity
                   onPress={toggleMemoKeyboard}
                   style={[s.kbBtn, memoNumeric && s.kbBtnOn]}
@@ -421,7 +424,9 @@ export default function RegisterScreen({ navigation, route }) {
                 multiline
               />
 
-              <Text style={s.label}>도착 메모 2</Text>
+              <Text style={s.label}>
+                도착 메모 2{isAdmin && saveScope === 'public' ? '  👥 모두에게 공개' : ''}    {/* ★ 바뀐 줄 */}
+              </Text>
               <TextInput
                 ref={memo2Ref}
                 style={[s.input, s.inputMono]}

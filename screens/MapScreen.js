@@ -285,6 +285,7 @@ export default function MapScreen({ navigation }) {
     var mapBuildings = [];
     var placedMarkers = [];   // 다시 그릴 때 지우기 위해 보관
     var clusterer = null;     // ★ 건물 마커를 뭉쳐주는 녀석
+    var alertClusterer = null;   // ★ 새 줄 — 강력알림 전용 (빨간 동그라미, 건물과 안 섞임)
 
     // ── 핀 색 구분 ──────────────────────────────────
     //  청록 = 내 폰에만 있는 건물 / 파랑 = 공용 건물
@@ -368,6 +369,30 @@ export default function MapScreen({ navigation }) {
         gridSize: 70,
       });
 
+       clusterer = new kakao.maps.MarkerClusterer({
+        map: map,
+        averageCenter: true,
+        minLevel: 5,
+        gridSize: 70,
+      });
+
+      // ★ 새 블록 — 강력알림 뭉치기
+      //    minLevel 7 = 건물보다 더 멀리 줌아웃해야 뭉친다 (동네 단위에선 항상 하나씩 보임)
+      alertClusterer = new kakao.maps.MarkerClusterer({
+        map: map,
+        averageCenter: true,
+        minLevel: 7,
+        gridSize: 60,
+        calculator: [100000],          // 몇 개든 아래 모양 하나로
+        styles: [{
+          width: '36px', height: '36px', lineHeight: '36px',
+          borderRadius: '18px', textAlign: 'center',
+          background: 'rgba(220,38,38,0.85)',
+          color: '#fff', fontWeight: 'bold', fontSize: '13px'
+        }]
+      });
+      // ★ 새 블록 끝     
+
       setupLongPress();
 
       // 빈 지도를 톡 치면 메모창이 닫히고 핀 색도 돌아온다.
@@ -418,6 +443,7 @@ export default function MapScreen({ navigation }) {
       selMarker = null;
       selOriginalImg = null;
       if (clusterer) clusterer.clear();          // ★ 뭉쳐둔 건물 마커 비우기
+      if (alertClusterer) alertClusterer.clear();   // ★ 새 줄
       placedMarkers.forEach(function(m) { m.setMap(null); });
       placedMarkers = [];
     }
@@ -462,12 +488,12 @@ export default function MapScreen({ navigation }) {
       });
       if (clusterer) clusterer.addMarkers(buildingMarkers);
 
-      // 알림 마커
+      // 알림 마커 — 지도에 바로 안 붙이고 알림 뭉치기에 맡긴다
+      var alertMarkers = [];                                   // ★ 새 줄
       (data.alertPoints || []).forEach(function(a) {
         var marker = new kakao.maps.Marker({
           position: new kakao.maps.LatLng(a.location.lat, a.location.lng),
-          map: map,
-          image: ALERT_IMG,
+          image: ALERT_IMG,                                    // ★ 바뀐 줄 — 위에 있던 map: map 줄은 지움
           title: a.name
         });
         kakao.maps.event.addListener(marker, 'click', function() {
@@ -475,9 +501,11 @@ export default function MapScreen({ navigation }) {
           selectPin(marker, ALERT_IMG, ALERT_IMG_SELECTED);
           showOverlay(a, true);
         });
+        alertMarkers.push(marker);                             // ★ 새 줄
         placedMarkers.push(marker);
       });
-    }
+      if (alertClusterer) alertClusterer.addMarkers(alertMarkers);   // ★ 새 줄
+     }
 
     function setupLongPress() {
       var el = document.getElementById('map');
