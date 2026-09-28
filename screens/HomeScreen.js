@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View, Text, FlatList, TouchableOpacity, ScrollView,
-  StyleSheet, ActivityIndicator, RefreshControl, Alert, PanResponder
+  StyleSheet, ActivityIndicator, RefreshControl, Alert, PanResponder, Animated   // ★ 바뀐 줄 — Animated 추가
 } from 'react-native';
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -164,6 +164,37 @@ export default function HomeScreen({ navigation }) {
   //
   //  PanResponder는 처음 만들어진 것이 계속 쓰이므로,
   //  안에서 지금 상태를 읽으려면 ref로 꺼내야 한다.
+
+    // ★ 새 블록 — 선택한 칩을 가로 줄 가운데로 굴린다
+  const chipScrollRef = useRef(null);
+  const chipPos = useRef({});          // { 탭키: { x, w } }
+  const chipBoxW = useRef(0);          // 칩 줄 전체 폭
+  useEffect(() => {
+    const p = chipPos.current[tab];
+    if (!p || !chipBoxW.current) return;
+    const x = Math.max(0, p.x + p.w / 2 - chipBoxW.current / 2);
+    chipScrollRef.current?.scrollTo({ x, animated: true });
+  }, [tab]);
+  // ★ 새 블록 끝
+
+  // ★ 새 블록 — 탭 바뀔 때 목록이 넘긴 방향에서 스르륵 들어온다
+  const slideX = useRef(new Animated.Value(0)).current;
+  const fade = useRef(new Animated.Value(1)).current;
+  const prevTabIdx = useRef(0);
+  useEffect(() => {
+    const keys = tabs.map(t => t.key);
+    const idx = keys.indexOf(tab);
+    const dir = idx >= prevTabIdx.current ? 1 : -1;   // 오른쪽 탭으로 가면 오른쪽에서 들어옴
+    prevTabIdx.current = idx;
+    slideX.setValue(dir * 40);
+    fade.setValue(0.3);
+    Animated.parallel([
+      Animated.timing(slideX, { toValue: 0, duration: 180, useNativeDriver: true }),
+      Animated.timing(fade, { toValue: 1, duration: 180, useNativeDriver: true }),
+    ]).start();
+  }, [tab]);
+  // ★ 새 블록 끝 (슬라이드)
+  
   const tabRef = useRef(tab);
   const tabKeysRef = useRef([]);
   useEffect(() => { tabRef.current = tab; }, [tab]);
@@ -250,6 +281,8 @@ export default function HomeScreen({ navigation }) {
 
       {/* 칩 */}
       <ScrollView
+        ref={chipScrollRef}                                                    // ★ 새 줄
+        onLayout={e => { chipBoxW.current = e.nativeEvent.layout.width; }}     // ★ 새 줄
         horizontal
         showsHorizontalScrollIndicator={false}
         style={s.chipScroll}
@@ -262,6 +295,7 @@ export default function HomeScreen({ navigation }) {
               key={t.key}
               style={[s.chip, on && s.chipOn]}
               onPress={() => changeTab(t.key)}
+              onLayout={e => { chipPos.current[t.key] = { x: e.nativeEvent.layout.x, w: e.nativeEvent.layout.width }; }}   // ★ 새 줄
             >
               <Text style={[s.chipText, on && s.chipTextOn]}>
                 {t.label} {counts[t.key]}
@@ -278,7 +312,10 @@ export default function HomeScreen({ navigation }) {
       </ScrollView>
 
       {/* 이 영역 안에서 좌우로 밀면 탭이 넘어간다 */}
-      <View style={{ flex: 1 }} {...pan.panHandlers}>
+      <Animated.View                                                                    // ★ 바뀐 줄
+        style={{ flex: 1, opacity: fade, transform: [{ translateX: slideX }] }}         // ★ 새 줄
+        {...pan.panHandlers}                                                            // ★ 새 줄
+      >                                                                                 // ★ 새 줄
         {loading ? (
           <ActivityIndicator size="large" color={c.accent} style={{ marginTop: 48 }} />
         ) : (
@@ -305,7 +342,7 @@ export default function HomeScreen({ navigation }) {
             contentContainerStyle={{ paddingHorizontal: space.lg }}
           />
         )}
-      </View>
+      </Animated.View>                                                                  // ★ 바뀐 줄
 
       {/* 등록 버튼 */}
       <TouchableOpacity

@@ -259,6 +259,7 @@ export default function MapScreen({ navigation }) {
     .overlay-memo2 { margin-top: 4px; background: #FEF6E7; color: #B45309; }
     .overlay-alert { border-left-color: #dc2626; }
     .overlay-type { font-size: 12px; font-weight: bold; color: #b91c1c; margin-bottom: 4px; }
+    .overlay-important { display: inline-block; font-size: 11px; font-weight: bold; color: #fff; background: #dc2626; border-radius: 4px; padding: 2px 6px; margin-bottom: 4px; }
     .overlay-hint { font-size: 10px; color: #9ca3af; margin-top: 6px; text-align: center; }
     .overlay-close {
       position: absolute; top: 4px; right: 4px;
@@ -290,15 +291,20 @@ export default function MapScreen({ navigation }) {
     // ── 핀 색 구분 ──────────────────────────────────
     //  청록 = 내 폰에만 있는 건물 / 파랑 = 공용 건물
     //  이미지 파일 없이 SVG를 그려서 쓴다. 인터넷이 없어도 뜬다.
-    function makePin(color) {
+    function makePin(color, mark) {                                                  // ★ 바뀐 줄
+      var inner = mark                                                               // ★ 새 줄
+        ? '<circle cx="13" cy="13" r="7" fill="#ffffff"/>'                            // ★ 새 줄
+          + '<text x="13" y="17.5" text-anchor="middle" font-size="12" font-weight="bold" fill="' + color + '">' + mark + '</text>'   // ★ 새 줄
+        : '<circle cx="13" cy="13" r="5" fill="#ffffff"/>';                           // ★ 새 줄
       var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="26" height="36" viewBox="0 0 26 36">'
         + '<path d="M13 0C5.8 0 0 5.8 0 13c0 9.8 13 23 13 23s13-13.2 13-23C26 5.8 20.2 0 13 0z" fill="' + color + '"/>'
-        + '<circle cx="13" cy="13" r="5" fill="#ffffff"/>'
+        + inner                                                                      // ★ 바뀐 줄
         + '</svg>';
       return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
     }
 
     var PIN_MINE = null, PIN_PUBLIC = null, PIN_SELECTED = null;
+    var PIN_IMPORTANT = null;                                                        // ★ 새 줄
     var ALERT_IMG = null, ALERT_IMG_SELECTED = null;
     var ALERT_ICON_URL = 'https://cdn-icons-png.flaticon.com/512/564/564619.png';
 
@@ -309,6 +315,7 @@ export default function MapScreen({ navigation }) {
       PIN_PUBLIC   = new kakao.maps.MarkerImage(makePin('#185FA5'), new kakao.maps.Size(26, 36));
       // 선택된 핀: 빨강 + 살짝 크게. 핀 끝(뾰족한 부분)이 그대로 그 자리에 있는다
       PIN_SELECTED = new kakao.maps.MarkerImage(makePin('#D92B2B'), new kakao.maps.Size(30, 42));
+      PIN_IMPORTANT = new kakao.maps.MarkerImage(makePin('#E8830C', '!'), new kakao.maps.Size(30, 42));   // ★ 새 줄 — 주황 + !
       ALERT_IMG          = new kakao.maps.MarkerImage(ALERT_ICON_URL, new kakao.maps.Size(35, 35));
       ALERT_IMG_SELECTED = new kakao.maps.MarkerImage(ALERT_ICON_URL, new kakao.maps.Size(46, 46));
     }
@@ -320,12 +327,13 @@ export default function MapScreen({ navigation }) {
 
     // ── 선택된 핀 표시 ──────────────────────────────
     //  지금 열려 있는 메모창이 어느 핀 것인지 한눈에 보이게 한다
-    var selMarker = null, selOriginalImg = null;
+     var selMarker = null, selOriginalImg = null, selOriginalZ = 1;                   // ★ 바뀐 줄
 
     function selectPin(marker, originalImg, selectedImg) {
       clearPinSelection();
       selMarker = marker;
       selOriginalImg = originalImg;
+      selOriginalZ = marker.getZIndex() || 1;                                        // ★ 새 줄
       marker.setImage(selectedImg);
       marker.setZIndex(20);   // 다른 핀에 가리지 않게 위로 올린다
     }
@@ -333,7 +341,7 @@ export default function MapScreen({ navigation }) {
     function clearPinSelection() {
       if (selMarker && selOriginalImg) {
         selMarker.setImage(selOriginalImg);
-        selMarker.setZIndex(1);
+        selMarker.setZIndex(selOriginalZ); 
       }
       selMarker = null;
       selOriginalImg = null;
@@ -473,7 +481,7 @@ export default function MapScreen({ navigation }) {
       // 건물 마커 — 하나씩 지도에 붙이지 않고 클러스터러에 맡긴다
       var buildingMarkers = [];
       mapBuildings.forEach(function(b) {
-        var normalImg = pinImage(isMineItem(b));
+        var normalImg = b.important ? PIN_IMPORTANT : pinImage(isMineItem(b));      // ★ 바뀐 줄
         var marker = new kakao.maps.Marker({
           position: new kakao.maps.LatLng(b.location.lat, b.location.lng),
           title: b.name,
@@ -483,7 +491,12 @@ export default function MapScreen({ navigation }) {
           selectPin(marker, normalImg, PIN_SELECTED);
           showOverlay(b, false);
         });
-        buildingMarkers.push(marker);
+        if (b.important) {                                                           // ★ 새 줄 — 중요 건물은 뭉치기에 안 넣는다
+          marker.setZIndex(5);                                                       // ★ 새 줄
+          marker.setMap(map);                                                        // ★ 새 줄
+        } else {                                                                     // ★ 새 줄
+          buildingMarkers.push(marker);
+        }                                                                            // ★ 새 줄
         placedMarkers.push(marker);
       });
       if (clusterer) clusterer.addMarkers(buildingMarkers);
@@ -559,6 +572,7 @@ export default function MapScreen({ navigation }) {
         '<div class="overlay' + (isAlert ? ' overlay-alert' : '') + (mine ? ' overlay-mine' : '') + '" id="ov_' + item.id + '">' +
           (isAlert ? '<div class="overlay-type">⚠ ' + esc(typeNames[item.alertType] || '알림구역') + '</div>' : '') +
           scopeLine +
+          (!isAlert && item.important ? '<div class="overlay-important">⚠ 헷갈리는 건물</div>' : '') +   // ★ 새 줄
           '<div class="overlay-head">' +
             '<div class="overlay-name">' + esc(item.name) + '</div>' +
             '<div class="overlay-close" onclick="closeOverlay()">×</div>' +
