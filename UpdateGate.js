@@ -8,7 +8,7 @@ import { Modal, View, Text, TouchableOpacity, StyleSheet, Linking } from 'react-
 import { getDatabase, ref, get } from 'firebase/database';
 
 // ⚠️ 빌드할 때마다 android\app\build.gradle 의 versionCode 와 똑같이 맞출 것
-export const APP_VERSION_CODE = 4;   // ★ 3 → 4
+export const APP_VERSION_CODE = 5;   // ★ 4 → 5
 
 const PKG = 'com.richcompany.smartridernative3';
 const STORE_APP = `market://details?id=${PKG}`;
