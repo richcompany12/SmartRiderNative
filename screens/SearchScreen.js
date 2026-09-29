@@ -8,7 +8,6 @@ import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BuildingRow from './BuildingRow';
 import { getCachedBuildings } from '../buildingsCache';
-import { copyBuildingMemo } from '../copyUtil';
 import { useTheme } from '../theme';
 import ShortcutBar from './ShortcutBar';
 
@@ -89,7 +88,16 @@ export default function SearchScreen({ navigation }) {
     <BuildingRow
       item={item}
       onPress={() => navigation.navigate('Detail', { buildingId: item.id })}
-      onCopy={() => copyBuildingMemo(item)}
+      onCopy={() => navigation.navigate('Register', {        // ★ 바뀐 줄 — 복사해서 새로 등록
+        buildingData: {                                      // ★ 새 줄
+          name: item.name || '',                             // ★ 새 줄
+          memo: item.memo || '',                             // ★ 새 줄
+          memo2: item.memo2 || '',                           // ★ 새 줄
+          note: item.note || '',                             // ★ 새 줄
+          shortcut: item.shortcut || '',                     // ★ 새 줄
+          location: item.location || null,                   // ★ 새 줄
+        },                                                   // ★ 새 줄
+      })}                                                    // ★ 새 줄
     />
   );
 

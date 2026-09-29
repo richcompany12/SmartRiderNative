@@ -104,6 +104,7 @@ class ProximityOverlayService : Service() {
     private var lastFixAt = 0L
 
     private var notifManager: NotificationManager? = null
+    private var currentNotification: Notification? = null   // ★ 새 줄 — 지금 떠 있는 알림 (재사용)
 
     // ── 플로팅 버튼 ──
     private var floatingView: View? = null
@@ -196,6 +197,8 @@ class ProximityOverlayService : Service() {
         }
         // ★ 새 블록 끝
 
+        enterForeground()   // ★ 새 줄 — 명령이 올 때마다 포그라운드 약속을 지킨다
+
         when (intent?.action) {
             ACTION_SHOW_TOAST -> {
                 val json = intent.getStringExtra(EXTRA_PAYLOAD)
@@ -250,16 +253,7 @@ class ProximityOverlayService : Service() {
         createChannel()
         notifManager = getSystemService(NotificationManager::class.java)
 
-        val notification = buildNotification("위치 확인 대기 중...")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(
-                NOTI_ID, notification,
-                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION or
-                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-            )
-        } else {
-            startForeground(NOTI_ID, notification)
-        }
+        enterForeground()   // ★ 바뀐 줄
 
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
 
@@ -1332,6 +1326,27 @@ class ProximityOverlayService : Service() {
     //  알림
     // ────────────────────────────────────────────
 
+    // ★ 새 함수 — 포그라운드 약속 지키기
+    // startForegroundService()는 부를 때마다 "startForeground를 부르겠다"는 약속이 걸린다.
+    // onCreate에서 한 번만 부르면, 설치 직후처럼 요청이 몰릴 때 약속 하나가 남아 30초 뒤 앱이 죽는다.
+    // 같은 알림 id(NOTI_ID) + 지금 떠 있는 알림을 그대로 넘기므로 알림이 두 개 생기지 않는다.
+    private fun enterForeground() {
+        val n = currentNotification ?: buildNotification("위치 확인 대기 중...").also { currentNotification = it }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(
+                    NOTI_ID, n,
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION or
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                )
+            } else {
+                startForeground(NOTI_ID, n)
+            }
+        } catch (e: Exception) {
+            android.util.Log.d(TAG, "startForeground 실패: ${e.message}")
+        }
+    }
+
     private fun buildNotification(text: String): Notification {
         val tapIntent = Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -1377,7 +1392,9 @@ class ProximityOverlayService : Service() {
         }
 
         try {
-            notifManager?.notify(NOTI_ID, buildNotification(text))
+            val n = buildNotification(text)   // ★ 바뀐 줄
+            currentNotification = n           // ★ 새 줄 — 다음 startForeground가 이 알림을 재사용
+            notifManager?.notify(NOTI_ID, n)  // ★ 바뀐 줄
         } catch (e: Exception) { e.printStackTrace() }
     }
 
