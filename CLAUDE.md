@@ -25,6 +25,8 @@ Expo SDK 54 / RN 0.81.5 / 새 아키텍처(`newArchEnabled=true`) / bare workflo
 4. **공용 건물의 `memo`(메모1)는 절대 서버에 올리지 않는다.** 서버엔 빈칸, 내용은 내 폰 개인 메모로. 메모2·이름·샛길·특이사항만 공용.
 5. **건물 전달은 `syncBuildingsToService` 하나, 강력알림 전달은 `syncAlertsToService` 하나.** 복사본 금지 (복사본엔 important·click·15km가 빠진다).
 6. **코드를 고치기 전에 뭘 바꿀지 먼저 설명하고 대표님 승인을 받는다.**
+7. **서비스의 `startForeground`는 `enterForeground()` 하나로만.** `onStartCommand`의 `enterForeground()` 호출은 지우지 말 것 (지우면 설치·업데이트 직후 30초 크래시 재발).
+8. **테스트할 땐 "설치 직후 바로 열고 40초 대기"도 꼭 확인.**
 
 ### 그 밖에 하지 말 것
 - `npx expo prebuild` (android 폴더·코틀린 날아감)
