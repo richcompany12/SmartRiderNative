@@ -7,6 +7,7 @@ import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../theme';
+import { TERMS_URL, PRIVACY_URL } from '../TermsGate';            // ★ 새 줄 (v6)
 
 export default function LoginScreen() {
   const { signInWithEmail, signUpWithEmail } = useAuth();
@@ -143,12 +144,20 @@ export default function LoginScreen() {
           </Text>
         </View>
 
-        <TouchableOpacity                                                       
-          style={s.policyLink}                                                   
-          onPress={() => Linking.openURL('https://richcanopy.kr/smartrider/privacy/')}               
-        >                                                                        
-          <Text style={s.policyText}>개인정보처리방침</Text>                    
-        </TouchableOpacity>                                                    
+        <View style={s.policyRow}>
+          <TouchableOpacity
+            style={s.policyLink}
+            onPress={() => Linking.openURL(TERMS_URL)}
+          >
+            <Text style={s.policyText}>이용약관</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={s.policyLink}
+            onPress={() => Linking.openURL(PRIVACY_URL)}
+          >
+            <Text style={s.policyText}>개인정보처리방침</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -211,6 +220,7 @@ const makeStyles = (c, font, space, radius, TAP) => StyleSheet.create({
     padding: space.md, marginTop: space.xxl,
   },
   privacyText: { flex: 1, ...font.tiny, color: c.accent, lineHeight: 18 },
+  policyRow: { flexDirection: 'row', justifyContent: 'center', gap: space.lg },                          // ★ 새 줄 (v6) — 이용약관 · 처리방침 나란히
   policyLink: { minHeight: TAP, justifyContent: 'center', alignItems: 'center', marginTop: space.sm },   // ★ 새 줄
   policyText: { ...font.tiny, color: c.textSub, textDecorationLine: 'underline' },                       // ★ 새 줄
 });

@@ -105,7 +105,7 @@ git push
 ### 루트
 | 파일 | 역할 |
 |---|---|
-| `App.js` | 네비게이션, `initAds()`, 로그인 후 `ProximityNotifier`·`UpdateGate` |
+| `App.js` | 네비게이션, `initAds()`, 로그인 후 `ProximityNotifier`·`UpdateGate`·`TermsGate` |
 | `AuthContext.js` / `roles.js` | 로그인 상태·역할 (폰 저장 역할로 먼저 시작) |
 | `firebase.js` / `firebaseDB.js` | Firebase 초기화 / 공용 건물·알림 CRUD + **버전 캐시**(`meta/*Version`, `bumpVersion`) |
 | `personalDB.js` | 개인 건물·메모·즐겨찾기 (폰, uid 안 씀) |
@@ -116,6 +116,7 @@ git push
 | `accountDelete.js` | 회원 탈퇴 (계정 삭제는 맨 마지막) |
 | `adConfig.js` / `adManager.js` | `USE_TEST_ADS` 스위치 / 광고 초기화·빈도·플로팅 숨김 |
 | `UpdateGate.js` | 최소 버전 강제 업데이트 창 (`APP_VERSION_CODE`) |
+| `TermsGate.js` | 약관 동의 창 (v6). `meta/termsVersion`(숫자)보다 폰의 `terms_agreed_version`이 작으면 띄움. `TERMS_URL`·`PRIVACY_URL`, 제보에 붙는 `getAgreedTermsVersion()` |
 | `settingsCache.js` | 설정값 (반경, 플로팅, 토스트음 등) |
 | `theme.js` | 색·글자·간격, 다크모드 (`c.accent` = 브랜드색) |
 | `imageUpload.js` / `suggestionsDB.js` / `copyUtil.js` / `navigationRef.js` | 사진 / 제보 / 복사 / 화면 이동 |
@@ -168,6 +169,13 @@ git push
 - 블루투스 연결 시 헬멧으로만 (내비 안내음 방식), 인터콤 앞부분 잘림 대비
 - 단지 영역 메모(마스터 비번): 지도에 점 찍어 영역 그리기 / 등록 + 버튼·지도 롱프레스 / 수정 지도 영역 탭·건물 상세 카드·검색 / **폰에만 저장**
 - 상점 광고: **앱 안에서만** (건물 상세 "근처 라이더 혜택" 카드, 지도 스폰서 핀, 가게 페이지). **토스트·플로팅(오버레이)엔 광고·유도 문구 절대 금지** (구글 정책)
+
+**약관 (10-05 추가) — ✅ 코드 완료 (10-05, 빌드·테스트는 v6 묶음)**
+- 사이드바에 "이용약관" 링크 → `https://richcanopy.kr/smartrider/terms/` (개인정보처리방침 링크와 같은 방식)
+- 앱 실행 시 약관 동의 확인 1회: "이용약관과 개인정보처리방침이 새로 생기거나 바뀌었어요" + 두 링크 + [동의]. 동의 여부는 **폰에만** (`termsVersion`), 약관이 바뀌면 숫자만 올려 다시 띄움
+- 제보 문서에 `termsVersion`(폰의 동의 숫자, 없으면 0)을 같이 저장. 동의 기록을 따로 서버에 올리진 않음
+- 약관이 바뀌면 **콘솔에서 `meta/termsVersion` 숫자만 올림** (앱 업데이트 불필요). 업데이트 필요한 폰에선 약관 창 대신 업데이트 창만
+- 테스트할 것: 처음 실행 시 창 / 동의 후 다시 안 뜸 / 비행기모드에서 기본값 1로 동작 / 콘솔 숫자 2로 올리면 다시 뜸 / 로그인 화면·사이드바 링크 / 제보에 termsVersion 들어감
 
 **단속카메라 이름 통일**
 - 화면에 보이는 이름을 "후면·양방향 카메라"로. 데이터의 원래 구분(`alerts.rearType` = 후면/양방향)은 그대로 둔다

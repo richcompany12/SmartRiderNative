@@ -19,6 +19,7 @@ import {
   getSavedPassword,
 } from '../backup';
 import { invalidateBuildingsCache } from '../buildingsCache';
+import { TERMS_URL, PRIVACY_URL } from '../TermsGate';            // ★ 새 줄 (v6)
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const PANEL_W = Math.min(300, SCREEN_W * 0.8);
@@ -105,6 +106,15 @@ export default function Sidebar({ visible, onClose, navigation }) {
         Alert.alert('열 수 없음', e?.message || ''));               // ★ 새 줄
     }, 220);                                                       // ★ 새 줄
   };                                                               // ★ 새 줄
+
+  // 이용약관·개인정보처리방침 — 사용설명서와 같은 방식 (v6)          // ★ 새 블록
+  const openWeb = (url) => {
+    onClose();
+    setTimeout(() => {
+      Linking.openURL(url).catch(e =>
+        Alert.alert('열 수 없음', e?.message || ''));
+    }, 220);
+  };                                                               // ★ 새 블록 끝
 
   // 앱 공유 — 소개 페이지 링크. 공유 뒤 광고는 띄우지 않는다       // ★ 새 줄
   const handleShare = () => {                                      // ★ 새 줄
@@ -332,6 +342,8 @@ export default function Sidebar({ visible, onClose, navigation }) {
           <MenuItem s={s} c={c} icon="message-alert-outline" label="제보하기" onPress={() => go('Suggest')} />
           <MenuItem s={s} c={c} icon="book-open-outline" label="사용설명서" onPress={openGuide} />
           <MenuItem s={s} c={c} icon="share-variant-outline" label="앱 공유하기" onPress={handleShare} />
+          <MenuItem s={s} c={c} icon="file-document-outline" label="이용약관" onPress={() => openWeb(TERMS_URL)} />
+          <MenuItem s={s} c={c} icon="shield-lock-outline" label="개인정보처리방침" onPress={() => openWeb(PRIVACY_URL)} />
 
           <View style={s.divider} />
 

@@ -20,6 +20,7 @@ import { db, auth } from './firebase';
 import { ref, get, set, push, update, remove } from 'firebase/database';
 import { deleteImageByUrl } from './imageUpload';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getAgreedTermsVersion } from './TermsGate';               // ★ 새 줄 (v6)
 
 const PATH = 'suggestions';
 export const MY_SUGGEST_KEYS = 'my_suggestion_ids';
@@ -50,6 +51,7 @@ export const saveSuggestion = async ({ type, text, images, location, buildingNam
     images: images || [],
     done: false,
     createdAt: Date.now(),
+    termsVersion: await getAgreedTermsVersion(),   // ★ 새 줄 (v6) — 이 폰이 동의한 약관 숫자 (동의 안 했으면 0). 제보에만 붙는다
   };
   if (location) data.location = location;
 

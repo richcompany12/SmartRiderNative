@@ -18,6 +18,7 @@ import DeleteAccountScreen from './screens/DeleteAccountScreen';    // ★ 새 �
 import { navigationRef } from './navigationRef';
 import { initAds } from './adManager';                              // ★ 새 줄
 import UpdateGate from './UpdateGate';                              // ★ 새 줄
+import TermsGate from './TermsGate';                                // ★ 새 줄 (v6) — 약관 동의 확인
 const Stack = createNativeStackNavigator();
 initAds();                                                          // ★ 새 줄
 
@@ -48,6 +49,7 @@ function AppNavigator() {
       </Stack.Navigator>
       {user && <ProximityNotifier />}
       {user && <UpdateGate />}
+      {user && <TermsGate />}
     </>
   );
 }
