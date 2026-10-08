@@ -18,9 +18,33 @@ import { useTheme } from '../theme';
 import { maybeShowInterstitial } from '../adManager';   
 import ShortcutBar from './ShortcutBar';  
 import { syncBuildingsToService } from './ProximityNotifier';          // ★ 새 줄    
+import { getCachedBuildings } from '../buildingsCache';                 // ★ 새 줄 (v6) — 근처 비슷한 건물 확인
+import { distanceKm } from '../alertSync';                              // ★ 새 줄 (v6)
 
 // 건물 이름 최대 글자수.
 const NAME_MAX = 25;
+
+// ★ v6 (5번) — 등록할 때 50m 안 비슷한 이름 경고
+const SIMILAR_M = 50;
+// 어느 건물에나 붙는 말은 빼고 비교한다 ("삼성시티 오피스텔"·"드림시티 오피스텔"이 같은 걸로 잡히지 않게)
+const COMMON_WORDS = ['오피스텔', '아파트', '오피스', '빌라', '빌딩', '타워', '상가', '주상복합', '맨션', '하이츠', 'apt'];
+const normName = (v) => {
+  let t = String(v || '').toLowerCase().replace(/[\s\-_.,·()\[\]'"]/g, '');
+  COMMON_WORDS.forEach(w => { t = t.split(w).join(''); });
+  return t;
+};
+// 같거나, 숫자만이 아닌 3글자 이상이 겹치면 비슷한 이름 ("동탄 센트럴에스타운"·"센트럴s타운" → "센트럴")
+const isSimilarName = (a, b) => {
+  const x = normName(a), y = normName(b);
+  if (!x || !y) return false;
+  if (x === y) return true;
+  for (let i = 0; i + 3 <= x.length; i++) {
+    const part = x.slice(i, i + 3);
+    if (/^\d+$/.test(part)) continue;
+    if (y.includes(part)) return true;
+  }
+  return false;
+};
 
 const ALERT_TYPES = [
   { key: 'rear', label: '후면·양방향 카메라' },   // ★ 바뀐 줄 (v6)
@@ -38,6 +62,7 @@ export default function RegisterScreen({ navigation, route }) {
 
   // 이 건물이 원래 어느 쪽 데이터였는지. 신규 등록이면 null.
   const editingId = buildingData?.id || null;
+  const copiedFromId = route.params?.copiedFromId || null;   // ★ 새 줄 (v6) — 목록 복사로 열렸으면 원본 id (비슷한 이름 비교에서 뺌)
   const editingScope =
     buildingData?.scope
     || (editingId ? (isLocalId(editingId) ? 'personal' : 'public') : null);
@@ -163,6 +188,34 @@ export default function RegisterScreen({ navigation, route }) {
   };
 
   // 공용 저장 시 메모2만 확인한다. 메모1은 자동으로 내 폰에만 저장된다.
+  // ★ v6 (5번) — 50m 안에 비슷한 이름이 있으면 경고. 막지는 않는다 (폰에 받아둔 목록으로만 비교, 서버 조회 없음)
+  const confirmNoSimilar = async () => {
+    let list = [];
+    try { list = await getCachedBuildings(); } catch (e) { return true; }
+    const skip = new Set([editingId, copiedFromId].filter(Boolean));
+    const near = list
+      .filter(b => b.location?.lat && b.location?.lng && !skip.has(b.id))
+      .map(b => ({ b, m: distanceKm(location.lat, location.lng, Number(b.location.lat), Number(b.location.lng)) * 1000 }))
+      .filter(x => x.m <= SIMILAR_M && isSimilarName(name, x.b.name))
+      .sort((p, q) => p.m - q.m)
+      .slice(0, 3);
+    if (near.length === 0) return true;
+    const lines = near
+      .map(x => `· ${x.b.name} (${x.b.scope === 'personal' ? '내 건물' : '공용'}, ${Math.round(x.m)}m)`)
+      .join('\n');
+    return new Promise((resolve) => {
+      Alert.alert(
+        '근처에 비슷한 건물이 있어요',
+        `${lines}\n\n같은 건물이면 저장하지 말고 그 건물에 메모를 추가하세요.`,
+        [
+          { text: '다시 확인', style: 'cancel', onPress: () => resolve(false) },
+          { text: '그래도 저장', onPress: () => resolve(true) },
+        ],
+        { cancelable: true, onDismiss: () => resolve(false) }
+      );
+    });
+  };
+
   const confirmPublicMemo = () => new Promise((resolve) => {
     if (!memo2.trim()) { resolve(true); return; }                          // ★ 바뀐 줄
     Alert.alert(
@@ -190,6 +243,12 @@ export default function RegisterScreen({ navigation, route }) {
     if (!name.trim()) {
       Alert.alert('오류', '이름을 입력해주세요.');
       return;
+    }
+
+    // ★ v6 (5번) — 근처 비슷한 건물 확인 (위치가 있을 때만)
+    if (regMode === 'building' && location) {
+      const goOn = await confirmNoSimilar();
+      if (!goOn) return;
     }
 
     const scope = (isAdmin && saveScope === 'public') ? 'public' : 'personal';

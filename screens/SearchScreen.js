@@ -89,6 +89,7 @@ export default function SearchScreen({ navigation }) {
       item={item}
       onPress={() => navigation.navigate('Detail', { buildingId: item.id })}
       onCopy={() => navigation.navigate('Register', {        // ★ 바뀐 줄 — 복사해서 새로 등록
+        copiedFromId: item.id,                             // ★ 새 줄 (v6) — 원본은 비슷한 이름 경고에서 뺌
         buildingData: {                                      // ★ 새 줄
           name: item.name || '',                             // ★ 새 줄
           memo: item.memo || '',                             // ★ 새 줄
