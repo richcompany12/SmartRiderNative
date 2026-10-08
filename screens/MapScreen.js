@@ -560,7 +560,7 @@ export default function MapScreen({ navigation }) {
 
     function showOverlay(item, isAlert) {
       if (currentOverlay) { currentOverlay.setMap(null); currentOverlay = null; }
-      var typeNames = { rear: '후방카메라', front: '전방카메라', parking: '주차단속', etc: '알림구역' };
+      var typeNames = { rear: '후면·양방향 카메라', front: '전방카메라', parking: '주차단속', etc: '알림구역' };
       var mine = !isAlert && isMineItem(item);
       var scopeLine = '';
       if (!isAlert) {

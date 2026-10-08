@@ -1,7 +1,9 @@
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useMemo } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text } from 'react-native';
 import { WebView } from 'react-native-webview';
 import * as Location from 'expo-location';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';   // ★ 새 줄 (v6) — 하단바에 버튼이 가리지 않게
+import { useTheme } from '../theme';                                    // ★ 새 줄 (v6) — 앱 색
 
 const KAKAO_API_KEY = '7d65ade73c1b3e7d64687306911f7ce7';
 
@@ -11,6 +13,9 @@ export default function LocationPickerScreen({ navigation, route }) {
   const onPicked = route.params?.onPicked; // 콜백
   const [selected, setSelected] = useState(initialLocation);
   const [ready, setReady] = useState(false);
+  const insets = useSafeAreaInsets();                                   // ★ 새 줄 (v6)
+  const { c } = useTheme();                                             // ★ 새 줄 (v6)
+  const styles = useMemo(() => makeStyles(c), [c]);                     // ★ 새 줄 (v6)
 
   useEffect(() => {
     (async () => {
@@ -111,7 +116,7 @@ export default function LocationPickerScreen({ navigation, route }) {
         javaScriptEnabled
         domStorageEnabled
       />
-      <View style={styles.bottom}>
+      <View style={[styles.bottom, { paddingBottom: 16 + insets.bottom }]}>   {/* ★ 바뀐 줄 (v6) */}
         {selected && (
           <Text style={styles.coord}>
             위도: {selected.lat.toFixed(6)}  경도: {selected.lng.toFixed(6)}
@@ -131,15 +136,16 @@ export default function LocationPickerScreen({ navigation, route }) {
   );
 }
 
-const styles = StyleSheet.create({
+// ★ v6 — 파란색 → 앱 색 (다크모드도 따라감)
+const makeStyles = (c) => StyleSheet.create({
   container: { flex: 1 },
   map: { flex: 1 },
-  bottom: { backgroundColor: '#fff', padding: 16 },
-  coord: { fontSize: 13, color: '#475569', marginBottom: 4 },
-  hint: { fontSize: 13, color: '#94a3b8', marginBottom: 12 },
+  bottom: { backgroundColor: c.surface, padding: 16 },
+  coord: { fontSize: 13, color: c.textSub, marginBottom: 4 },
+  hint: { fontSize: 13, color: c.textFaint, marginBottom: 12 },
   btnRow: { flexDirection: 'row', gap: 12 },
-  btnSave: { flex: 1, backgroundColor: '#3b82f6', padding: 14, borderRadius: 8, alignItems: 'center' },
-  btnSaveText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-  btnCancel: { flex: 1, backgroundColor: '#e2e8f0', padding: 14, borderRadius: 8, alignItems: 'center' },
-  btnCancelText: { color: '#374151', fontWeight: 'bold', fontSize: 16 },
+  btnSave: { flex: 1, backgroundColor: c.accent, padding: 14, borderRadius: 8, alignItems: 'center' },
+  btnSaveText: { color: c.onAccent, fontWeight: 'bold', fontSize: 16 },
+  btnCancel: { flex: 1, backgroundColor: c.accentSoft, padding: 14, borderRadius: 8, alignItems: 'center' },
+  btnCancelText: { color: c.accent, fontWeight: 'bold', fontSize: 16 },
 });

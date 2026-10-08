@@ -103,6 +103,7 @@ export const promoteToPublic = async (building) => {
   const {
     id, scope, memo, memo2,
     publicMemo, publicMemo2, hasPersonalNote, fromServerId,
+    password,                                   // ★ 새 줄 (v6) — 옛 데이터의 비번 칸. 서버에 올리면 안 됨
     ...rest
   } = building;
 

@@ -199,6 +199,8 @@ export default function DetailScreen({ navigation, route }) {
   const selRef = useRef({});      // ★ 새 줄 — 칸별 마지막 커서 위치
   const inputRefs = useRef({});   // ★ 새 줄 — 칸별 입력칸
   const [saving, setSaving] = useState(false);
+  const busyRef = useRef(false);  // ★ 새 줄 (v6) — 저장·올리기를 누르는 순간 잠금 (state는 다시 그린 뒤에야 걸려서 두 번 탭이 통과함)
+  const [justSaved, setJustSaved] = useState(route.params?.justSaved === true);  // ★ 새 줄 (v6) — 등록 화면 공용 저장 직후 안내
   const [saveMsg, setSaveMsg] = useState('');
   const [locationChanged, setLocationChanged] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
@@ -286,6 +288,8 @@ export default function DetailScreen({ navigation, route }) {
   const resetPhotoEdits = () => { setPendingPhotos([]); setRemovedPhotos([]); };
 
   const handleSave = async () => {
+    if (busyRef.current) return;                                         // ★ 새 줄 (v6)
+    busyRef.current = true;                                              // ★ 새 줄 (v6)
     setSaving(true);
     try {
       // 사진 먼저 처리한다. 업로드가 실패하면 글자도 저장하지 않는다.
@@ -318,8 +322,8 @@ export default function DetailScreen({ navigation, route }) {
       if (isMine) {
         await savePersonalBuilding(payload);
       } else if (isAdmin) {
-        const { publicMemo, publicMemo2, hasPersonalNote, isFav, scope, ...clean } = payload;   // ★ 새 줄 — 화면용 값은 서버에 안 올림
-        await updateBuilding({ ...clean, memo: '' });                                          // ★ 바뀐 줄 — 메모1은 서버에 안 올림
+        const { publicMemo, publicMemo2, hasPersonalNote, isFav, scope, password, ...clean } = payload;   // ★ 바뀐 줄 (v6) — 화면용 값·옛 비번 칸은 서버에 안 올림
+        await updateBuilding({ ...clean, memo: '', password: null, publicMemo: null });       // ★ 바뀐 줄 (v6) — 메모1은 빈칸, 옛 비번 칸이 서버에 남아 있으면 지움
         await savePersonalNote(buildingId, { memo: building.memo, memo2: '' });                // ★ 새 줄 — 비번은 내 폰에만
       } else {
         // 일반 사용자가 공용 건물을 수정 → 출입 정보만 내 폰에 붙인다.
@@ -339,12 +343,14 @@ export default function DetailScreen({ navigation, route }) {
       syncBuildingsToService('상세 저장');                                // ★ 새 줄
       setEditMode(false);
       setLocationChanged(false);
+      setJustSaved(false);                                               // ★ 새 줄 (v6)
       setSaveMsg('저장 완료');
       setTimeout(() => setSaveMsg(''), 2000);
     } catch (e) {
       Alert.alert('오류', '저장 실패: ' + e.message);
     } finally {
       setSaving(false);
+      busyRef.current = false;                                           // ★ 새 줄 (v6)
     }
   };
 
@@ -382,12 +388,15 @@ export default function DetailScreen({ navigation, route }) {
 
   // 내 건물을 공용으로 올린다. 출입 정보는 빼고 올라간다.
   const handlePromote = () => {
+    if (busyRef.current) return;                                         // ★ 새 줄 (v6) — 확인 창 뜨기 전에 잠금
+    busyRef.current = true;                                              // ★ 새 줄 (v6)
+    const unlock = () => { busyRef.current = false; };                   // ★ 새 줄 (v6)
     Alert.alert(
       '공용으로 올리기',
       `"${building.name}"을(를) 모든 사용자가 볼 수 있게 올립니다.\n\n` +
       '도착 메모는 올라가지 않고 내 폰에만 남습니다.',
       [
-        { text: '취소', style: 'cancel' },
+        { text: '취소', style: 'cancel', onPress: unlock },              // ★ 바뀐 줄 (v6)
         {
           text: '올리기',
           onPress: async () => {
@@ -405,10 +414,12 @@ export default function DetailScreen({ navigation, route }) {
               Alert.alert('오류', '올리기 실패: ' + e.message);
             } finally {
               setSaving(false);
+              unlock();                                                  // ★ 새 줄 (v6)
             }
           }
         }
-      ]
+      ],
+      { cancelable: true, onDismiss: unlock }                            // ★ 새 줄 (v6) — 창 밖을 눌러 닫아도 잠금 풀림
     );
   };
 
@@ -485,6 +496,12 @@ export default function DetailScreen({ navigation, route }) {
 
             {editMode ? (
               <>
+                {justSaved && (
+                  <View style={s.savedBanner}>
+                    <Icon name="check-circle" size={20} color="#fff" />
+                    <Text style={s.savedBannerText}>저장됐어요. 사진을 추가하세요</Text>
+                  </View>
+                )}
                 {!isMine && isAdmin && (
                   <View style={s.warnBox}>
                     <Text style={s.warnText}>
@@ -511,6 +528,18 @@ export default function DetailScreen({ navigation, route }) {
                   placeholderTextColor={c.textFaint}
                 />
                 <ShortcutBar storageKey="shortcuts_name" onPick={ch => append('name', ch, 25)} />
+                {/* ★ v6 — 중요 버튼은 이름 바로 아래 (사진 버튼과 떨어뜨림) */}
+                {(isMine || isAdmin) && (
+                  <TouchableOpacity
+                    style={[s.importantBtn, building.important && s.importantBtnOn]}
+                    onPress={() => set('important', !building.important)}
+                  >
+                    <Icon name={building.important ? 'alert' : 'alert-outline'} size={18} color={building.important ? '#fff' : c.textSub} />
+                    <Text style={[s.importantText, building.important && s.importantTextOn]}>
+                      {building.important ? '중요 표시됨 · 한 번 더 확인' : '중요 표시 (헷갈리는 건물)'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
 
                 <Text style={s.label}>도착 메모</Text>
                 <TextInput
@@ -611,17 +640,6 @@ export default function DetailScreen({ navigation, route }) {
                   </>
                 )}
 
-                  {(isMine || isAdmin) && (
-                  <TouchableOpacity
-                    style={[s.btnSub, { marginTop: 12 }, building.important && { borderColor: '#D93A2B', backgroundColor: 'rgba(217,58,43,0.08)' }]}
-                    onPress={() => set('important', !building.important)}
-                  >
-                    <Icon name={building.important ? 'alert' : 'alert-outline'} size={18} color={building.important ? '#D93A2B' : c.textSub} />
-                    <Text style={[s.btnSubText, building.important && { color: '#D93A2B', fontWeight: 'bold' }]}>
-                      {building.important ? '중요 표시됨 · 한 번 더 확인' : '중요 표시 (헷갈리는 건물)'}
-                    </Text>
-                  </TouchableOpacity>
-                )}
 
                 {/* 위치 */}
                 <Text style={s.label}>위치</Text>
@@ -663,7 +681,7 @@ export default function DetailScreen({ navigation, route }) {
                 <TouchableOpacity
                   style={s.btnPlain}
                   onPress={() => {
-                    setEditMode(false); setLocationChanged(false); resetPhotoEdits();
+                    setEditMode(false); setLocationChanged(false); resetPhotoEdits(); setJustSaved(false);
                   }}
                 >
                   <Text style={s.btnPlainText}>취소</Text>
@@ -921,6 +939,25 @@ const makeStyles = (c, font, space, radius, TAP) => StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth, borderColor: c.lineStrong,
   },
   btnSubText: { ...font.body, fontWeight: '500', color: c.accent },
+
+  // ★ v6 — 중요 버튼: 꺼짐은 회색 테두리, 켜짐은 주황 바탕 (지도 중요 핀과 같은 색)
+  importantBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    minHeight: TAP, borderRadius: radius.md, marginTop: space.md, marginBottom: space.sm,
+    backgroundColor: c.surface,
+    borderWidth: 1, borderColor: c.lineStrong,
+  },
+  importantBtnOn: { backgroundColor: '#E8830C', borderColor: '#E8830C' },
+  importantText: { ...font.body, fontWeight: '500', color: c.textSub },
+  importantTextOn: { color: '#fff', fontWeight: 'bold' },
+
+  // ★ v6 — 공용 저장 직후 안내 띠
+  savedBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: space.sm,
+    backgroundColor: c.accent, borderRadius: radius.md,
+    paddingVertical: space.md, paddingHorizontal: space.lg, marginBottom: space.md,
+  },
+  savedBannerText: { ...font.body, fontWeight: 'bold', color: '#fff' },
 
   btnPrimary: {
     minHeight: TAP + 4, justifyContent: 'center', alignItems: 'center',

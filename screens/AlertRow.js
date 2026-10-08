@@ -13,7 +13,7 @@ import { useTheme } from '../theme';
  */
 
 const TYPE_INFO = {
-  rear:    { label: '후방카메라', icon: 'cctv' },
+  rear:    { label: '후면·양방향 카메라', icon: 'cctv' },   // ★ 바뀐 줄 (v6)
   front:   { label: '전방카메라', icon: 'cctv' },
   parking: { label: '주차단속',   icon: 'car' },
   etc:     { label: '기타',       icon: 'alert-outline' },

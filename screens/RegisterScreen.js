@@ -23,7 +23,7 @@ import { syncBuildingsToService } from './ProximityNotifier';          // ★ �
 const NAME_MAX = 25;
 
 const ALERT_TYPES = [
-  { key: 'rear', label: '후방카메라' },
+  { key: 'rear', label: '후면·양방향 카메라' },   // ★ 바뀐 줄 (v6)
   { key: 'front', label: '전방카메라' },
   { key: 'parking', label: '주차단속' },
   { key: 'etc', label: '기타' },
@@ -66,6 +66,7 @@ export default function RegisterScreen({ navigation, route }) {
   const [favorite, setFavoriteState] = useState(false);
 
   const [isSaving, setIsSaving] = useState(false);
+  const savingRef = useRef(false);   // ★ 새 줄 (v6) — 누르는 순간 잠금 (확인 창 뜨기 전)
   const [activeField, setActiveField] = useState('name');
   const [memoNumeric, setMemoNumeric] = useState(true);
 
@@ -84,6 +85,9 @@ export default function RegisterScreen({ navigation, route }) {
       setMemo2(buildingData.memo2 || '');
       setNote(buildingData.note || '');
       setShortcut(buildingData.shortcut || '');
+      setImportant(buildingData.important === true);                   // ★ 새 줄 (v6) — 앞 건물 중요 표시가 남지 않게
+    } else {
+      setImportant(false);                                             // ★ 새 줄 (v6) — 새 등록으로 다시 열려도 꺼진 채로
     }
   }, [route.params?.buildingData]);
 
@@ -171,7 +175,18 @@ export default function RegisterScreen({ navigation, route }) {
     );
   });
 
+  // ★ v6 — 두 번 눌러도 한 번만 저장. 확인 창 "다시 확인"·오류·화면 이동 뒤에는 풀림
   const handleSave = async () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    try {
+      await doSave();
+    } finally {
+      savingRef.current = false;
+    }
+  };
+
+  const doSave = async () => {                                          // ★ 바뀐 줄 (v6) — 원래 handleSave 본문
     if (!name.trim()) {
       Alert.alert('오류', '이름을 입력해주세요.');
       return;
@@ -239,7 +254,7 @@ export default function RegisterScreen({ navigation, route }) {
       if (regMode === 'building') syncBuildingsToService('등록 저장');   // ★ 새 줄
 
       if (!editingId && regMode === 'building' && scope === 'public') {
-        navigation.replace('Detail', { buildingId: savedId, startEdit: true }); // ★ 새 줄
+        navigation.replace('Detail', { buildingId: savedId, startEdit: true, justSaved: true }); // ★ 바뀐 줄 (v6) — 상세에서 "저장됐어요" 안내
         return;                                                               // ★ 새 줄
       }                                                                        // ★ 새 줄
       navigation.goBack();
@@ -395,6 +410,19 @@ export default function RegisterScreen({ navigation, route }) {
 
           <ShortcutBar storageKey="shortcuts_name" onPick={ch => insertTo('name', ch)} />
 
+          {/* ★ v6 — 중요 버튼은 이름 바로 아래 (즐겨찾기 버튼과 떨어뜨림) */}
+          {regMode === 'building' && !(editingScope === 'public' && saveScope === 'personal') && (
+            <TouchableOpacity
+              style={[s.importantBtn, important && s.importantBtnOn]}
+              onPress={() => setImportant(v => !v)}
+            >
+              <Icon name={important ? 'alert' : 'alert-outline'} size={19} color={important ? '#fff' : c.textSub} />
+              <Text style={[s.favText, important && s.importantTextOn]}>
+                {important ? '중요 표시됨 · 한 번 더 확인' : '중요 표시 (헷갈리는 건물)'}
+              </Text>
+            </TouchableOpacity>
+          )}
+
           {regMode === 'building' ? (
             <>
                {/* 도착 메모 */}
@@ -462,17 +490,6 @@ export default function RegisterScreen({ navigation, route }) {
                 </Text>
               </TouchableOpacity>
 
-              {!(editingScope === 'public' && saveScope === 'personal') && (
-                <TouchableOpacity
-                  style={[s.favBtn, important && { borderColor: '#D93A2B', backgroundColor: 'rgba(217,58,43,0.08)' }]}
-                  onPress={() => setImportant(v => !v)}
-                >
-                  <Icon name={important ? 'alert' : 'alert-outline'} size={19} color={important ? '#D93A2B' : c.textSub} />
-                  <Text style={[s.favText, important && { color: '#D93A2B', fontWeight: 'bold' }]}>
-                    {important ? '중요 표시됨 · 한 번 더 확인' : '중요 표시 (헷갈리는 건물)'}
-                  </Text>
-                </TouchableOpacity>
-              )}
 
               <Text style={s.label}>샛길 정보</Text>
               <TextInput
@@ -676,6 +693,15 @@ const makeStyles = (c, font, space, radius, TAP) => StyleSheet.create({
   favBtnOn: { backgroundColor: c.warnSoft, borderColor: c.star },
   favText: { ...font.body, fontWeight: '500', color: c.textSub },
   favTextOn: { color: c.warn },
+  // ★ v6 — 중요 버튼: 켜지면 주황 바탕 (지도 중요 핀과 같은 색)
+  importantBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+    minHeight: TAP, borderRadius: radius.md, marginTop: space.md,
+    backgroundColor: c.surface,
+    borderWidth: 1, borderColor: c.lineStrong,
+  },
+  importantBtnOn: { backgroundColor: '#E8830C', borderColor: '#E8830C' },
+  importantTextOn: { color: '#fff', fontWeight: 'bold' },
 
   alertBox: {
     backgroundColor: c.dangerSoft, borderRadius: radius.md,

@@ -27,7 +27,7 @@ const RADIUS_OPTIONS = [15, 20, 25, 30, 40, 50];
 const ALERT_DISTANCE_OPTIONS = [50, 100, 200];
 
 const ALERT_TYPE_LIST = [
-  { key: 'rear',    label: '후방카메라', hint: '이륜차가 주로 걸리는 쪽' },
+  { key: 'rear',    label: '후면·양방향 카메라', hint: '이륜차가 주로 걸리는 쪽' },   // ★ 바뀐 줄 (v6)
   { key: 'front',   label: '전방카메라', hint: '이륜차는 앞번호판이 없어 잘 안 걸림', soon: true },  // ★
   { key: 'parking', label: '주차단속', hint: null, soon: true },                                   // ★
   { key: 'etc',     label: '기타', hint: null, soon: true },                                       // ★

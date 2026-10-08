@@ -10,7 +10,7 @@ import { useAuth } from '../AuthContext';
 import { useTheme } from '../theme';
 
 const ALERT_TYPES = [
-  { key: 'rear', label: '후방카메라' },
+  { key: 'rear', label: '후면·양방향 카메라' },   // ★ 바뀐 줄 (v6)
   { key: 'front', label: '전방카메라' },
   { key: 'parking', label: '주차단속' },
   { key: 'etc', label: '기타' },
