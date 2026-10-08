@@ -29,6 +29,8 @@ import android.view.WindowManager
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import androidx.core.location.LocationManagerCompat   // ★ 새 줄 (v6) — 폰 위치 토글 확인
+import android.location.LocationManager               // ★ 새 줄 (v6)
 import com.facebook.react.ReactApplication
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.google.android.gms.location.FusedLocationProviderClient
@@ -1378,12 +1380,21 @@ class ProximityOverlayService : Service() {
 
     private var lastNotiText: String? = null   // ★ 새 줄 (v6) — 문구가 같으면 알림을 다시 그리지 않음
 
+    // ★ 새 함수 (v6) — 폰의 위치 기능(빠른 설정 "위치" 토글)이 켜져 있는지. 못 읽으면 켜진 걸로 보고 기존 판단에 맡김
+    private fun isLocationOn(): Boolean = try {
+        val lm = getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+        lm == null || LocationManagerCompat.isLocationEnabled(lm)
+    } catch (e: Exception) { true }
+
     // ★ v6 — 개발용 초 표시를 빼고 라이더가 보는 문구로 (기획요약 2장 9번 A안)
     private fun updateNotification() {
         val now = System.currentTimeMillis()
         val text: String
 
-        if (lastLocationAt == 0L) {
+        if (!isLocationOn()) {
+            // ★ 새 줄 (v6) — 위치 토글을 끈 건 기다릴 이유가 없음 → 15초 안에 바로 표시
+            text = "위치가 꺼져 있어요 · 위치를 켜주세요"
+        } else if (lastLocationAt == 0L) {
             text = "알림 준비 중..."
         } else {
             val age = now - lastLocationAt
