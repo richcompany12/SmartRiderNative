@@ -92,8 +92,8 @@ android {
         applicationId 'com.richcompany.smartridernative3'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 5          // ★ 4 → 5
-        versionName "1.0.3"    // ★ 1.0.2 → 1.0.3
+        versionCode 6          // ★ 5 → 6 (v6)
+        versionName "1.0.4"    // ★ 1.0.3 → 1.0.4 (v6)
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
