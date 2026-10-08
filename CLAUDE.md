@@ -97,7 +97,7 @@ git push
 2. `adConfig.js` `USE_TEST_ADS = false`
 3. `gradlew.bat bundleRelease` → `D:\app\배포보관\`에 복사
 4. **바로 `USE_TEST_ADS = true`** → 커밋
-5. Play Console 업로드 (R8 경고는 무시)
+5. Play Console 업로드 (R8·edge-to-edge·대형 화면 경고는 v7 목록에서 처리 — R8 기한 2027-02)
 
 ---
 
@@ -145,7 +145,8 @@ git push
 
 - 스토어: **v5(1.0.3) 승인·게시 완료**, 메인폰도 v5로 업데이트함 / 비공개 테스트 12명, 프로덕션 신청 가능일 **10-04~10-05 (Play Console에서 재확인)**
 - 코드: versionCode **6** (1.0.4), `APP_VERSION_CODE = 6`, `USE_TEST_ADS = true`
-- **v6 AAB 빌드 완료 (10-08)**: `D:\app\배포보관\smartrider_v6_20261008.aab` → Play Console 제출은 대표님. 게시 후 메인폰 업데이트 → 테스터 공지 뒤 `meta/minVersionCode = 6` 검토
+- **v6 (1.0.4) 제출 완료 (10-08 대표님)** → 검토 중. AAB `D:\app\배포보관\smartrider_v6_20261008.aab`. 게시 후 메인폰 업데이트 → 테스터 공지 뒤 `meta/minVersionCode = 6` 검토
+  - 제출 때 Play Console 경고 3개 → **v7 목록** (R8, Android 15 edge-to-edge, 대형 화면 세로 고정)
 - v5 AAB: `D:\app\배포보관\smartrider_v5_20260929.aab`
 - v5 내용: 공용 메모1 차단 / 강력알림 15km / 알림 클러스터 / 중요 핀 / 캐시 10분 / 홈 탭 슬라이드 / 목록 복사 버튼(복사해서 새로 등록)
 - **서버 `buildings` = 전부 공용** (개인 건물은 폰에만). `promotedAt` 있는 것 = 공용 올리기(`promoteToPublic`)로 올린 것(`-P...` id), 숫자 id = 등록 화면 공용 저장(`Date.now()`)
@@ -208,6 +209,16 @@ git push
 
 **낮은 우선순위 (메모만)**
 - `promoteToPublic`(migration.js) 순서: 서버 공용 저장 → 폰에 비번 저장 → 개인 사본 삭제. 공용 저장 뒤 폰 저장소 오류가 나면 개인 사본이 남아 목록에 두 번 나오고, 그걸 다시 올리면 공용이 2개 됨.
+
+### v7 목록 (10-08)
+**Play Console 경고 (v6 제출 때 나옴)**
+1. ⬜ **R8 코드 최적화·난독화 켜기** — 기한 **2027년 2월**. `android/app/build.gradle` `minifyEnabled`(R8) + `proguard-rules.pro`. ⚠️ 켜면 코틀린 서비스·RN 모듈·광고·Firebase가 이름 바뀜으로 깨질 수 있어 **공기계 전체 기능 테스트 필수** (토스트·강력알림·플로팅·광고·로그인·사진·백업, 설치 직후 40초)
+2. ⬜ **Android 15 지원 중단 API (edge-to-edge)** — 라이브러리 업데이트로 대응. targetSdk 36이라 화면이 상태바·하단바 밑까지 그려짐 (v6 8번 위치 선택 버튼 가림이 같은 원인). 업데이트 후 하단 여백 남은 화면 점검
+3. ⬜ **대형 화면 세로 고정 제한** — 우선순위 낮음. 태블릿·폴드에서 세로 고정이 무시될 수 있음 (`AndroidManifest` `screenOrientation`)
+
+**v6에서 넘어온 것**
+- 지역 단위 내려받기 (지금은 전부 받아도 가벼움)
+- 11 볼륨 4단계 / 12 블루투스 헬멧 전용 / 13 단지 영역 메모 / 16 라이더 편의 정보 토스트 / 17 상점 광고 (내용은 v6 목록 D)
 
 ### 그 뒤
 - 공유 버튼 처리 결정 (대표님 고민 중) / 이용약관 페이지 / 피쉬라인 애드몹
