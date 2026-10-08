@@ -145,7 +145,7 @@ git push
 
 - 스토어: **v5(1.0.3) 승인·게시 완료**, 메인폰도 v5로 업데이트함 / 비공개 테스트 12명, 프로덕션 신청 가능일 **10-04~10-05 (Play Console에서 재확인)**
 - 코드: versionCode **6** (1.0.4), `APP_VERSION_CODE = 6`, `USE_TEST_ADS = true`
-- **v6 (1.0.4) 제출 완료 (10-08 대표님)** → 검토 중. AAB `D:\app\배포보관\smartrider_v6_20261008.aab`. 게시 후 메인폰 업데이트 → 테스터 공지 뒤 `meta/minVersionCode = 6` 검토
+- **v6 (1.0.4) 제출 완료 (10-08 대표님)** → 검토 중. AAB `D:\app\배포보관\smartrider_v6_20261008.aab`. 게시 후 메인폰 업데이트. **`meta/minVersionCode = 6`은 게시 후 바로 켜지 않음** — 1~2주 지켜보고 대표님이 결정 (켤 땐 테스터 공지 먼저, 10-08 결정)
   - 제출 때 Play Console 경고 3개 → **v7 목록** (R8, Android 15 edge-to-edge, 대형 화면 세로 고정)
 - v5 AAB: `D:\app\배포보관\smartrider_v5_20260929.aab`
 - v5 내용: 공용 메모1 차단 / 강력알림 15km / 알림 클러스터 / 중요 핀 / 캐시 10분 / 홈 탭 슬라이드 / 목록 복사 버튼(복사해서 새로 등록)
