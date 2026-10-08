@@ -549,7 +549,7 @@ class ProximityOverlayService : Service() {
     // ────────────────────────────────────────────
 
     private fun typeLabel(type: String): String = when (type) {
-        "rear" -> "후방카메라"
+        "rear" -> "후면·양방향 카메라"   // ★ 바뀐 줄 (v6)
         "front" -> "전방카메라"
         "parking" -> "주차단속"
         else -> "알림구역"
@@ -1331,7 +1331,7 @@ class ProximityOverlayService : Service() {
     // onCreate에서 한 번만 부르면, 설치 직후처럼 요청이 몰릴 때 약속 하나가 남아 30초 뒤 앱이 죽는다.
     // 같은 알림 id(NOTI_ID) + 지금 떠 있는 알림을 그대로 넘기므로 알림이 두 개 생기지 않는다.
     private fun enterForeground() {
-        val n = currentNotification ?: buildNotification("위치 확인 대기 중...").also { currentNotification = it }
+        val n = currentNotification ?: buildNotification("알림 준비 중...").also { currentNotification = it }   // ★ 바뀐 줄 (v6) — 라이더용 문구
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 startForeground(
@@ -1376,25 +1376,31 @@ class ProximityOverlayService : Service() {
             .build()
     }
 
+    private var lastNotiText: String? = null   // ★ 새 줄 (v6) — 문구가 같으면 알림을 다시 그리지 않음
+
+    // ★ v6 — 개발용 초 표시를 빼고 라이더가 보는 문구로 (기획요약 2장 9번 A안)
     private fun updateNotification() {
         val now = System.currentTimeMillis()
         val text: String
 
         if (lastLocationAt == 0L) {
-            text = "위치 확인 대기 중..."
+            text = "알림 준비 중..."
         } else {
             val age = now - lastLocationAt
             text = if (age > STALE_THRESHOLD) {
-                "⚠️ 감지 중단됨 (${age / 1000}초)"
+                "위치를 잠시 못 받고 있어요 · GPS를 확인해주세요"
             } else {
-                "감지 중 · ${age / 1000}초 전 위치 확인 · 건물 ${buildings.size}"
+                "건물 메모 알림 켜짐 · 건물 ${buildings.size}곳"
             }
         }
+
+        if (text == lastNotiText) return       // ★ 새 줄 (v6) — 상태가 바뀔 때만 갱신
 
         try {
             val n = buildNotification(text)   // ★ 바뀐 줄
             currentNotification = n           // ★ 새 줄 — 다음 startForeground가 이 알림을 재사용
             notifManager?.notify(NOTI_ID, n)  // ★ 바뀐 줄
+            lastNotiText = text                // ★ 새 줄 (v6) — 알림이 실제로 바뀐 뒤에만 기억
         } catch (e: Exception) { e.printStackTrace() }
     }
 
