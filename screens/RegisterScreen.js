@@ -24,8 +24,8 @@ import { distanceKm } from '../alertSync';                              // ★ �
 // 건물 이름 최대 글자수.
 const NAME_MAX = 25;
 
-// ★ v6 (5번) — 등록할 때 50m 안 비슷한 이름 경고
-const SIMILAR_M = 50;
+// ★ v6 (5번) — 등록할 때 30m 안 비슷한 이름 경고 (50m는 너무 넓어서 30m로, 10-08 대표님)
+const SIMILAR_M = 30;
 // 어느 건물에나 붙는 말은 빼고 비교한다 ("삼성시티 오피스텔"·"드림시티 오피스텔"이 같은 걸로 잡히지 않게)
 const COMMON_WORDS = ['오피스텔', '아파트', '오피스', '빌라', '빌딩', '타워', '상가', '주상복합', '맨션', '하이츠', 'apt'];
 const normName = (v) => {
@@ -188,7 +188,7 @@ export default function RegisterScreen({ navigation, route }) {
   };
 
   // 공용 저장 시 메모2만 확인한다. 메모1은 자동으로 내 폰에만 저장된다.
-  // ★ v6 (5번) — 50m 안에 비슷한 이름이 있으면 경고. 막지는 않는다 (폰에 받아둔 목록으로만 비교, 서버 조회 없음)
+  // ★ v6 (5번) — 30m 안에 비슷한 이름이 있으면 경고. 막지는 않는다 (폰에 받아둔 목록으로만 비교, 서버 조회 없음)
   const confirmNoSimilar = async () => {
     let list = [];
     try { list = await getCachedBuildings(); } catch (e) { return true; }
