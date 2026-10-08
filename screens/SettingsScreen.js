@@ -17,6 +17,7 @@ import { getAllAlertPoints } from '../firebaseDB';
 import { useAuth } from '../AuthContext';
 import { syncBuildingsToService } from './ProximityNotifier';   // ★ 새 줄
 import { countPersonalData } from '../personalDB';
+import { getRegions, getPartnerOptIn, setPartnerOptIn } from '../statsSync';   // ★ 새 줄 (v6) — 활동 지역·제휴 안내
 import {
   getMigrationState, importServerToPersonal, deleteOriginalsFromServer,
 } from '../migration';
@@ -95,6 +96,15 @@ export default function SettingsScreen({ navigation }) {
 
   // 내 데이터 건수
   const [myCount, setMyCount] = useState({ buildings: 0, notes: 0 });
+
+  // ★ v6 (14번) — 활동 지역·제휴 안내 수신 (화면에 돌아올 때마다 다시 읽음)
+  const [regions, setRegions] = useState([]);
+  const [partner, setPartner] = useState({ on: false, date: null });
+  useEffect(() => {
+    const load = async () => { setRegions(await getRegions()); setPartner(await getPartnerOptIn()); };
+    load();
+    return navigation.addListener('focus', load);
+  }, [navigation]);
 
   // 데이터 이전 상태
   const [migState, setMigState] = useState(null);
@@ -324,6 +334,25 @@ export default function SettingsScreen({ navigation }) {
     </View>
     <ScrollView style={s.container} contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}>
 
+      {/* ★ v6 — 활동 지역 */}
+      <Text style={s.section}>활동 지역</Text>
+      <View style={s.card}>
+        <View style={s.row}>
+          <Text style={s.rowLabel}>{regions.length > 0 ? regions.join(', ') : '아직 안 골랐어요'}</Text>
+          <Text style={s.rowHint}>라이더가 많은 지역부터 카메라·공용 건물 정보를 늘려갑니다.</Text>
+          <TouchableOpacity style={s.regionBtn} onPress={() => navigation.navigate('Region')}>
+            <Text style={s.regionBtnText}>{regions.length > 0 ? '바꾸기' : '고르기'}</Text>
+          </TouchableOpacity>
+        </View>
+        <ToggleRow
+          label="지역 파트너·제휴 안내 이메일"
+          hint={partner.on ? `받는 중 (동의일 ${partner.date})` : '선택 — 켜면 가입한 이메일로 안내를 받아요'}
+          value={partner.on}
+          onChange={async (v) => setPartner(await setPartnerOptIn(v))}
+          s={s}
+        />
+      </View>
+
       {/* 근접 알림 */}
       <Text style={s.section}>근접 알림</Text>
       <View style={s.card}>
@@ -500,6 +529,11 @@ const makeStyles = (c, font, space, radius, TAP) => StyleSheet.create({
   rowDisabled: { opacity: 0.45 },  
   rowLabel: { ...font.body, fontWeight: '500', color: c.text },
   rowHint: { ...font.sub, color: c.textMuted, marginTop: 3, lineHeight: 19 },
+  regionBtn: {                                                                  // ★ 새 줄 (v6)
+    marginTop: space.sm + 2, minHeight: TAP, justifyContent: 'center', alignItems: 'center',
+    backgroundColor: c.accentSoft, borderRadius: radius.sm,
+  },
+  regionBtnText: { ...font.body, fontWeight: '500', color: c.accent },
   choiceGroup: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, marginTop: space.sm + 2 },   // ★ flexWrap 추가
   choice: {
     flexBasis: '30%', flexGrow: 1, minHeight: TAP, justifyContent: 'center', alignItems: 'center',   // ★ flex: 1 → 한 줄에 3개씩

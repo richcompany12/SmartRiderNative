@@ -336,6 +336,7 @@ export default function Sidebar({ visible, onClose, navigation }) {
           <MenuItem s={s} c={c} icon="magnify" label="건물 조회" onPress={() => go('Search')} />
           <MenuItem s={s} c={c} icon="map-outline" label="지도" onPress={() => go('Map')} />
           <MenuItem s={s} c={c} icon="cog-outline" label="설정" onPress={() => go('Settings')} />
+          <MenuItem s={s} c={c} icon="map-marker-radius-outline" label="활동 지역" onPress={() => go('Region')} />
 
           <View style={s.divider} />
 

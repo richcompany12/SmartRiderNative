@@ -36,6 +36,21 @@ export const getAgreedTermsVersion = async () => {
   }
 };
 
+// ★ v6 (14번) — 약관 확인이 끝났다는 신호. 활동 지역 창(RegionGate)은 이 신호 뒤에만 뜬다
+// 업데이트가 필요한 폰에선 신호가 안 나간다 → 업데이트 창만 보임
+let termsDone = false;
+const waiters = new Set();
+export const onTermsDone = (cb) => {
+  if (termsDone) { cb(); return () => {}; }
+  waiters.add(cb);
+  return () => waiters.delete(cb);
+};
+const markTermsDone = () => {
+  termsDone = true;
+  waiters.forEach(f => { try { f(); } catch (e) {} });
+  waiters.clear();
+};
+
 const readMeta = async (key) => {
   const snap = await withTimeout(get(ref(getDatabase(), `meta/${key}`)), 4000);
   return snap.val();
@@ -60,6 +75,7 @@ export default function TermsGate() {
       const agreed = await getAgreedTermsVersion();
       setRequired(req);
       if (agreed < req) setNeed(true);
+      else markTermsDone();                                               // ★ 새 줄 (v6)
     })();
   }, []);
 
@@ -70,6 +86,7 @@ export default function TermsGate() {
       console.log('[TermsGate] 저장 실패', e?.message);
     }
     setNeed(false);
+    markTermsDone();                                                      // ★ 새 줄 (v6)
   };
 
   const open = (url) => Linking.openURL(url).catch(() => {});
