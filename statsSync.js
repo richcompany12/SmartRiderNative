@@ -27,7 +27,8 @@ import { MAX_REGIONS } from './regions';
 
 const KEY_REGIONS = 'active_regions';
 const KEY_PARTNER = 'partner_opt_in';
-const KEY_LAST = 'stats_last_uploaded_';   // + uid
+// v2: 10-08 두 요청이 동시에 돌다 "마지막으로 올린 값" 기억이 꼬였던 폰도 한 번 다시 올리게 이름을 바꿈
+const KEY_LAST = 'stats_last_uploaded_v2_';   // + uid
 
 // 오늘 날짜 (폰 시간 기준) "2026-10-08"
 const today = () => {
@@ -70,7 +71,33 @@ export const setPartnerOptIn = async (on) => {
 };
 
 // ── 통계 올리기 ──────────────────────────────────────────
-export const syncStats = async (reason = '') => {
+// 한 번에 하나만 돈다. 도는 중에 요청이 오면 끝난 뒤 최신 값으로 한 번만 더 돈다.
+// (동시에 두 번 돌면 서버 값과 "마지막으로 올린 값" 기억이 어긋나서, 다음 변경을 같은 값으로 착각하고 안 올렸음 — 10-08)
+let running = null;
+let again = false;
+let againReason = '';
+
+export const syncStats = (reason = '') => {
+  if (running) {
+    again = true;
+    againReason = reason;
+    return running;
+  }
+  running = (async () => {
+    try {
+      await uploadOnce(reason);
+      while (again) {
+        again = false;
+        await uploadOnce(againReason);
+      }
+    } finally {
+      running = null;
+    }
+  })();
+  return running;
+};
+
+const uploadOnce = async (reason) => {
   try {
     const user = auth.currentUser;
     if (!user) return;
