@@ -1,0 +1,149 @@
+{
+ "format": "smartrider-backup",
+ "version": 2,
+ "exportedAt": "2026-10-11T07:40:24.245Z",
+ "buildings": {
+  "local_1791704424245_demo0": {
+   "name": "[시연] 햇살마루 오피스텔",
+   "memo": "B동 후문 엘베가 빨라요",
+   "memo2": "택배함은 1층 왼쪽",
+   "note": "",
+   "shortcut": "",
+   "important": false,
+   "images": [],
+   "timestamp": 1791704424245,
+   "location": {
+    "lat": 37.2005,
+    "lng": 127.072
+   }
+  },
+  "local_1791704424245_demo1": {
+   "name": "[시연] 푸른숲 아파트 101동",
+   "memo": "정문 말고 놀이터 쪽 입구",
+   "memo2": "",
+   "note": "동 입구 헷갈림",
+   "shortcut": "",
+   "important": true,
+   "images": [],
+   "timestamp": 1791704424245,
+   "location": {
+    "lat": 37.2018,
+    "lng": 127.0698
+   }
+  },
+  "local_1791704424245_demo2": {
+   "name": "[시연] 푸른숲 아파트 102동",
+   "memo": "101동 바로 뒤, 같은 출입구",
+   "memo2": "",
+   "note": "",
+   "shortcut": "",
+   "important": false,
+   "images": [],
+   "timestamp": 1791704424245,
+   "location": {
+    "lat": 37.2021,
+    "lng": 127.0705
+   }
+  },
+  "local_1791704424245_demo3": {
+   "name": "[시연] 은하수 타워",
+   "memo": "엘베 2대 중 오른쪽이 고층용",
+   "memo2": "",
+   "note": "",
+   "shortcut": "",
+   "important": false,
+   "images": [],
+   "timestamp": 1791704424245,
+   "location": {
+    "lat": 37.1992,
+    "lng": 127.0741
+   }
+  },
+  "local_1791704424245_demo4": {
+   "name": "[시연] 새봄 상가",
+   "memo": "주차는 건물 뒤 골목",
+   "memo2": "2층 음식점은 계단이 빨라요",
+   "note": "",
+   "shortcut": "",
+   "important": false,
+   "images": [],
+   "timestamp": 1791704424245,
+   "location": {
+    "lat": 37.1987,
+    "lng": 127.0712
+   }
+  },
+  "local_1791704424245_demo5": {
+   "name": "[시연] 별빛 기숙사",
+   "memo": "기숙사동은 정문 경비실 앞에서 하차",
+   "memo2": "",
+   "note": "출입 시간 제한",
+   "shortcut": "",
+   "important": false,
+   "images": [],
+   "timestamp": 1791704424245,
+   "location": {
+    "lat": 37.2032,
+    "lng": 127.0733
+   }
+  },
+  "local_1791704424245_demo6": {
+   "name": "[시연] 다온 빌라",
+   "memo": "골목 안쪽 세 번째 건물",
+   "memo2": "",
+   "note": "",
+   "shortcut": "",
+   "important": false,
+   "images": [],
+   "timestamp": 1791704424245,
+   "location": {
+    "lat": 37.1979,
+    "lng": 127.0689
+   }
+  },
+  "local_1791704424245_demo7": {
+   "name": "[시연] 한울 메디컬",
+   "memo": "지하주차장 입구가 뒤쪽",
+   "memo2": "",
+   "note": "",
+   "shortcut": "",
+   "important": false,
+   "images": [],
+   "timestamp": 1791704424245,
+   "location": {
+    "lat": 37.2009,
+    "lng": 127.0756
+   }
+  },
+  "local_1791704424245_demo8": {
+   "name": "[시연] 초록 주상복합",
+   "memo": "상가 엘베 말고 주거동 엘베",
+   "memo2": "",
+   "note": "",
+   "shortcut": "",
+   "important": false,
+   "images": [],
+   "timestamp": 1791704424245,
+   "location": {
+    "lat": 37.204,
+    "lng": 127.0702
+   }
+  },
+  "local_1791704424245_demo9": {
+   "name": "[시연] 하늘채 오피스",
+   "memo": "로비 안내데스크 지나서 왼쪽",
+   "memo2": "",
+   "note": "",
+   "shortcut": "",
+   "important": false,
+   "images": [],
+   "timestamp": 1791704424245,
+   "location": {
+    "lat": 37.1999,
+    "lng": 127.0675
+   }
+  }
+ },
+ "notes": {},
+ "favorites": {}
+}
