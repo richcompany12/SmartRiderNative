@@ -1,3 +1,4 @@
+// screens/MapScreen.js
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { View, StyleSheet, TouchableOpacity, Text, Alert } from 'react-native';
@@ -13,6 +14,11 @@ const KAKAO_API_KEY = '7d65ade73c1b3e7d64687306911f7ce7';
 // 지도에 그릴 범위. 건물이 2000건을 넘으면 핀을 전부 그릴 때 지도가 버벅인다.
 // 라이더가 실제로 쓰는 건 주변뿐이므로 이 반경만 그린다.
 const MAP_RADIUS_KM = 20;
+
+// 길게 누르기 확인창 잠금이 이 시간보다 오래 남아 있으면 확인창이 콜백 없이 닫힌 것으로 본다.
+const LOCK_MAX_MS = 10000;
+// 같은 길게 누르기가 두 번 들어온 것으로 보는 간격
+const LOCK_DUP_MS = 1000;
 
 // 두 좌표 사이 거리(km)
 const distanceKm = (lat1, lng1, lat2, lng2) => {
@@ -42,8 +48,24 @@ export default function MapScreen({ navigation }) {
   const [myLocation, setMyLocation] = useState(null);
   const [shown, setShown] = useState({ mine: 0, pub: 0, alert: 0 });
 
-  // 팝업이 이미 떠 있으면 두 번째 요청을 무시하기 위한 잠금장치
-  const alertOpenRef = useRef(false);
+  // 팝업이 이미 떠 있으면 두 번째 요청을 무시하기 위한 잠금장치.
+  // 확인창을 열 때마다 새 번호로 잠그고, 그 번호의 확인창이 닫힐 때만 푼다.
+  // (예전 확인창의 늦은 콜백이 새 잠금을 풀어버리지 않게)
+  const lockRef = useRef(null);        // { id, at } | null
+  const lockSeqRef = useRef(0);
+
+  const releaseLock = (id) => {
+    if (id == null || (lockRef.current && lockRef.current.id === id)) lockRef.current = null;
+  };
+
+  // 길게 누르기가 조용히 끝나지 않게, 실패하면 반드시 안내한다
+  const showOpenFail = (code) => {
+    console.log('[MAP] 길게 누르기 실패:', code);
+    Alert.alert('등록 화면을 열지 못했어요', '다시 눌러주세요.\n(코드: ' + code + ')');
+  };
+  const showNotEmpty = () => {
+    Alert.alert('빈 곳을 길게 눌러주세요', '핀이나 묶음 위에서는 새로 등록할 수 없어요.');
+  };
 
   const refreshMyLocation = async () => {
     const { status } = await Location.requestForegroundPermissionsAsync();
@@ -72,6 +94,8 @@ export default function MapScreen({ navigation }) {
   // (등록 화면에서 캐시를 무효화했으면 여기서 새 건물이 바로 반영된다)
   useFocusEffect(
     useCallback(() => {
+      // 다른 화면에 갔다 왔으면 확인창은 이미 닫혀 있다
+      lockRef.current = null;
       refreshMyLocation();
       loadData();
     }, [])
@@ -118,16 +142,102 @@ export default function MapScreen({ navigation }) {
 
   // 팝업을 닫은 뒤 시간차를 두고 이동한다.
   // 팝업이 떠 있는 상태에서 navigate를 부르면 에러 없이 조용히 무시되는 경우가 있다.
-  const goRegister = (params) => {
-    alertOpenRef.current = false;
-    setTimeout(() => navigation.navigate('Register', params), 250);
+  const goRegister = (lockId, params) => {
+    releaseLock(lockId);
+    setTimeout(() => {
+      try {
+        navigation.navigate('Register', params);
+      } catch (e) {
+        showOpenFail('nav ' + (e?.message || ''));
+      }
+    }, 250);
+  };
+
+  const handleLongPress = (data) => {
+    // 잠금이 남아 있는 경우
+    const cur = lockRef.current;
+    if (cur) {
+      const age = Date.now() - cur.at;
+      if (age < LOCK_DUP_MS) {
+        // 같은 길게 누르기가 두 번 들어온 것. 확인창은 이미 떠 있다
+        console.log('[MAP] 길게 누르기 중복 무시');
+        return;
+      }
+      lockRef.current = null;
+      if (age < LOCK_MAX_MS) {
+        // 확인창이 떠 있으면 지도를 누를 수 없다 → 잠금만 남은 것
+        showOpenFail('lock');
+        return;
+      }
+      console.log('[MAP] 오래된 잠금 자동 해제', age);
+    }
+
+    const id = ++lockSeqRef.current;
+    lockRef.current = { id, at: Date.now() };
+    let alertShown = false;
+
+    try {
+      const { lat, lng, nearest } = data;
+
+      if (nearest) {
+        Alert.alert(
+          '근처 건물 발견',
+          `📍 근처에 "${nearest.name}" 이(가) 있습니다.\n\n복사해서 등록하시겠습니까?`,
+          [
+            {
+              text: '복사 등록',
+              onPress: () => goRegister(id, {
+                buildingData: {
+                  name: nearest.name,
+                  memo: nearest.memo || '',
+                  memo2: nearest.memo2 || '',
+                  note: nearest.note || '',
+                  shortcut: nearest.shortcut || '',
+                  images: []
+                },
+                location: { lat, lng }
+              })
+            },
+            {
+              text: '새로 등록',
+              onPress: () => goRegister(id, { location: { lat, lng } })
+            },
+            {
+              text: '취소',
+              style: 'cancel',
+              // 취소는 잠금만 풀고 아무 일도 하지 않는다
+              onPress: () => releaseLock(id)
+            }
+          ],
+          {
+            cancelable: true,
+            // 바깥을 누르거나 뒤로가기로 닫았을 때도 잠금 해제
+            onDismiss: () => releaseLock(id)
+          }
+        );
+        alertShown = true;
+      } else {
+        goRegister(id, { location: { lat, lng } });
+      }
+    } catch (e) {
+      showOpenFail('alert ' + (e?.message || ''));
+    } finally {
+      // 확인창이 실제로 떴을 때만 잠금을 남긴다 (버튼·바깥 탭·뒤로가기에서 풀린다)
+      if (!alertShown) releaseLock(id);
+    }
   };
 
   // WebView → RN 메시지 처리
   const handleMessage = (event) => {
+    let data;
     try {
-      const data = JSON.parse(event.nativeEvent.data);
+      data = JSON.parse(event.nativeEvent.data);
+    } catch (e) {
+      showOpenFail('msg');
+      return;
+    }
 
+    try {
       if (data.type === 'JS_ERROR') { alert('지도 에러: ' + data.msg); return; }
 
       if (data.type === 'MARKER_CLICK') {
@@ -140,54 +250,13 @@ export default function MapScreen({ navigation }) {
         return;
       }
 
-      if (data.type === 'LONG_PRESS') {
-        // 이미 팝업이 떠 있으면 무시 (창이 겹쳐 뜨는 것을 막는다)
-        if (alertOpenRef.current) return;
-        alertOpenRef.current = true;
-
-        const { lat, lng, nearest } = data;
-
-        if (nearest) {
-          Alert.alert(
-            '근처 건물 발견',
-            `📍 근처에 "${nearest.name}" 이(가) 있습니다.\n\n복사해서 등록하시겠습니까?`,
-            [
-              {
-                text: '복사 등록',
-                onPress: () => goRegister({
-                  buildingData: {
-                    name: nearest.name,
-                    memo: nearest.memo || '',
-                    memo2: nearest.memo2 || '',
-                    note: nearest.note || '',
-                    shortcut: nearest.shortcut || '',
-                    images: []
-                  },
-                  location: { lat, lng }
-                })
-              },
-              {
-                text: '새로 등록',
-                onPress: () => goRegister({ location: { lat, lng } })
-              },
-              {
-                text: '취소',
-                style: 'cancel',
-                // 취소는 잠금만 풀고 아무 일도 하지 않는다
-                onPress: () => { alertOpenRef.current = false; }
-              }
-            ],
-            {
-              cancelable: true,
-              // 바깥을 눌러 닫았을 때도 잠금 해제
-              onDismiss: () => { alertOpenRef.current = false; }
-            }
-          );
-        } else {
-          goRegister({ location: { lat, lng } });
-        }
-      }
-    } catch (e) {}
+      if (data.type === 'LONG_PRESS') { handleLongPress(data); return; }
+      if (data.type === 'LONG_PRESS_FAIL') { showOpenFail(data.reason || 'map'); return; }
+      if (data.type === 'LONG_PRESS_NOT_EMPTY') { showNotEmpty(); return; }
+    } catch (e) {
+      lockRef.current = null;
+      showOpenFail('rn ' + (e?.message || ''));
+    }
   };
 
   const mapHtml = `
@@ -423,8 +492,17 @@ export default function MapScreen({ navigation }) {
           if (myMarker) myMarker.setPosition(newPos);
           map.setCenter(newPos);
         }
-      } catch(err) {}
+      } catch(err) {
+        // 지도 탭에 들어올 때마다 INIT이 오므로 안내는 한 번만 띄운다
+        if (!initErrShown) {
+          initErrShown = true;
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'JS_ERROR', msg: '건물 표시 실패 (' + (err && err.message) + ')'
+          }));
+        }
+      }
     }
+    var initErrShown = false;
 
     function calcDistance(lat1, lng1, lat2, lng2) {
       var R = 6371000;
@@ -520,25 +598,54 @@ export default function MapScreen({ navigation }) {
       if (alertClusterer) alertClusterer.addMarkers(alertMarkers);   // ★ 새 줄
      }
 
+    // 길게 누르기가 조용히 끝나지 않게, 못 열면 RN에 이유를 알린다
+    function postLongPressFail(reason) {
+      window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'LONG_PRESS_FAIL', reason: reason }));
+    }
+
+    // 핀(내 건물·공용·중요·알림) 또는 묶음 위인지 확인
+    function isPinOrCluster(t, root) {
+      for (var n = t, i = 0; n && n !== root && i < 6; n = n.parentNode, i++) {
+        if (n.tagName === 'IMG') {
+          var src = n.getAttribute('src') || '';
+          if (src.indexOf('data:image/svg+xml') === 0 || src === ALERT_ICON_URL) return true;
+        }
+        // 묶음 = 숫자만 적힌 동그라미
+        if (n.tagName === 'DIV' && n.children && n.children.length === 0 &&
+            /^[0-9]+$/.test((n.textContent || '').trim())) return true;
+      }
+      return false;
+    }
+
     function setupLongPress() {
       var el = document.getElementById('map');
-      var touchTimer = null, touchLatLng = null;
+      var touchTimer = null, touchLatLng = null, touchTarget = null;
+      var touchStartAt = 0, startX = 0, startY = 0;
+      var MOVE_PX = 10;   // 이만큼 움직이면 길게 누르기가 아니라 지도 이동
 
-      el.addEventListener('touchstart', function(e) {
-        if (e.touches.length !== 1) return;
-        if (!map) return;
-        // ★ 메모창 위에서 시작한 터치는 지도의 롱프레스로 치지 않는다.
-        //   (메모창이 지도 안에 들어있는 DOM이라 그냥 두면 둘 다 발동한다)
-        if (e.target && e.target.closest && e.target.closest('.overlay')) return;
-        var touch = e.touches[0];
-        var rect = el.getBoundingClientRect();
-        var proj = map.getProjection();
-        var point = new kakao.maps.Point(touch.clientX - rect.left, touch.clientY - rect.top);
-        touchLatLng = proj.coordsFromContainerPoint(point);
+      // 안드로이드 웹뷰가 길게 누르기를 가로채지 않게 한다
+      el.addEventListener('contextmenu', function(e) { e.preventDefault(); });
 
+      function stopTimer() {
         clearTimeout(touchTimer);
-        touchTimer = setTimeout(function() {
-          if (!touchLatLng) return;
+        touchTimer = null;
+      }
+
+      function fireLongPress() {
+        touchTimer = null;
+        try {
+          // 메모창이나 핀·묶음 위에서 길게 누르면 새 등록 대신 안내
+          if (touchTarget && touchTarget.closest && touchTarget.closest('.overlay')) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'LONG_PRESS_NOT_EMPTY' }));
+            return;
+          }
+          if (isPinOrCluster(touchTarget, el)) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'LONG_PRESS_NOT_EMPTY' }));
+            return;
+          }
+          if (!map) { postLongPressFail('map'); return; }
+          if (!touchLatLng) { postLongPressFail('pos'); return; }
+
           var lat = touchLatLng.getLat();
           var lng = touchLatLng.getLng();
           var nearest = findNearest(lat, lng);
@@ -550,12 +657,51 @@ export default function MapScreen({ navigation }) {
               note: nearest.note || '', shortcut: nearest.shortcut || ''
             } : null
           }));
-        }, 800);
+        } catch (err) {
+          postLongPressFail('js ' + (err && err.message));
+        }
+      }
+
+      el.addEventListener('touchstart', function(e) {
+        stopTimer();
+        // 두 손가락 = 확대·축소. 길게 누르기가 아니다
+        if (e.touches.length !== 1) return;
+
+        var touch = e.touches[0];
+        touchTarget = e.target;
+        touchStartAt = Date.now();
+        startX = touch.clientX;
+        startY = touch.clientY;
+        touchLatLng = null;
+        try {
+          if (map) {
+            var rect = el.getBoundingClientRect();
+            var point = new kakao.maps.Point(touch.clientX - rect.left, touch.clientY - rect.top);
+            touchLatLng = map.getProjection().coordsFromContainerPoint(point);
+          }
+        } catch (err) {
+          touchLatLng = null;   // fireLongPress에서 'pos'로 알린다
+        }
+        touchTimer = setTimeout(fireLongPress, 800);
       }, { passive: true });
 
-      el.addEventListener('touchend', function() { clearTimeout(touchTimer); });
-      el.addEventListener('touchmove', function() { clearTimeout(touchTimer); });
-      el.addEventListener('touchcancel', function() { clearTimeout(touchTimer); });
+      el.addEventListener('touchmove', function(e) {
+        if (!touchTimer) return;
+        var t = e.touches[0];
+        if (!t) return;
+        // 손가락 떨림 정도는 무시한다
+        if (Math.abs(t.clientX - startX) > MOVE_PX || Math.abs(t.clientY - startY) > MOVE_PX) stopTimer();
+      }, { passive: true });
+
+      el.addEventListener('touchend', stopTimer);
+
+      // 시스템이 터치를 가져간 경우. 길게 누르던 중이었으면 알린다
+      el.addEventListener('touchcancel', function() {
+        var held = Date.now() - touchStartAt;
+        var wasPending = !!touchTimer;
+        stopTimer();
+        if (wasPending && held >= 400) postLongPressFail('cancel');
+      });
     }
 
     function showOverlay(item, isAlert) {
