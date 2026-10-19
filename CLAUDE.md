@@ -145,7 +145,11 @@ git push
 ## 4. 지금 상태와 남은 일 (10-11 기준)
 
 - 스토어: **v6(1.0.4) 게시 완료 (10-08)** / 비공개 테스트 12명, 프로덕션 신청 가능일 **10-04~10-05 (Play Console에서 재확인)**
-- 코드: versionCode **7** (1.0.5, v6.1 — 지도 길게 누르기 수정), `APP_VERSION_CODE = 7`, `USE_TEST_ADS = true`. 공기계 확인 목록은 `docs/기획요약.md` 2-0
+- 코드: versionCode **7** (1.0.5), `APP_VERSION_CODE = 7`, `USE_TEST_ADS = true`
+- **v6.1 (1.0.5) = 지도 길게 누르기(✅ 코드 완료, `MapScreen.js`) + 키보드(⬜ 다음 작업)** — 10-19 범위 확정. R8 등 큰 작업은 v7. 상세·공기계 확인 목록은 `docs/기획요약.md` 2-0
+  - 키보드: 등록·수정 화면 **도착 메모 1부터 아래 칸이 키보드에 가림** + 숫자판이 안 바뀌는 경우(테스터 폰). 나머지 입력 화면도 **공통 방식으로 한꺼번에**. v7 2번 edge-to-edge를 앞당겨 같이
+  - 원인 후보: `gradle.properties` `edgeToEdgeEnabled=true` + 매니페스트 `adjustResize` → Android 15+에선 키보드 높이만큼 창이 안 줄어듦. 화면마다 `KeyboardAvoidingView`가 따로 있고(Register·Detail·AlertDetail·Suggest·Login), Search·ShortcutBar·Sidebar·DeleteAccount엔 없음
+  - 폰: 메인폰 안드로이드 17 / 공기계 13(네이버 스마트보드). **공기계에선 안 보일 수 있어 메인폰 확인 필요** (메인폰 설치 금지 → 스토어 내부 테스트로)
 - **v6 (1.0.4)** AAB `D:\app\배포보관\smartrider_v6_20261008.aab`. **`meta/minVersionCode = 6`은 게시 후 바로 켜지 않음** — 1~2주 지켜보고 대표님이 결정 (켤 땐 테스터 공지 먼저, 10-08 결정)
   - 제출 때 Play Console 경고 3개 → **v7 목록** (R8, Android 15 edge-to-edge, 대형 화면 세로 고정)
 - v5 AAB: `D:\app\배포보관\smartrider_v5_20260929.aab`
