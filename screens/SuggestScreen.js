@@ -1,8 +1,10 @@
 import { useState, useMemo } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, ScrollView, Image,
-  StyleSheet, Alert, ActivityIndicator, KeyboardAvoidingView, Platform
+  View, Text, TextInput, TouchableOpacity, Image,
+  StyleSheet, Alert, ActivityIndicator,
 } from 'react-native';
+import KeyboardScreen from './KeyboardScreen';   // ★ v6.1 — 키보드 가림 공통 부품
+import { fixTextKeyboard } from '../keyboardMode';   // ★ v6.1 — 숫자판 갇힘
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme';
@@ -101,19 +103,15 @@ export default function SuggestScreen({ navigation, route }) {
   const current = SUGGEST_TYPES.find(t => t.key === type);
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: c.bg }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    <View style={{ flex: 1, backgroundColor: c.bg }}>
       <View style={[s.header, { paddingTop: insets.top + space.sm }]}>
         <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}>
           <Icon name="arrow-left" size={24} color={c.textSub} />
         </TouchableOpacity>
         <Text style={s.screenTitle}>제보하기</Text>
       </View>
-      <ScrollView
+      <KeyboardScreen
         style={s.container}
-        keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: insets.bottom + 60 }}
       >
         <Text style={s.lead}>
@@ -143,6 +141,8 @@ export default function SuggestScreen({ navigation, route }) {
           style={s.input}
           value={buildingName}
           onChangeText={setBuildingName}
+          onFocus={() => fixTextKeyboard()}
+          inputMode="text"
           placeholder="예: 서천 경희마크329"
           placeholderTextColor={c.textFaint}
         />
@@ -153,6 +153,8 @@ export default function SuggestScreen({ navigation, route }) {
           style={[s.input, s.inputMulti]}
           value={text}
           onChangeText={setText}
+          onFocus={() => fixTextKeyboard()}
+          inputMode="text"
           multiline
           numberOfLines={5}
           placeholder={'예) 12층은 호수 배치가 다릅니다.\n1201호가 엘리베이터 왼쪽이에요.'}
@@ -227,8 +229,8 @@ export default function SuggestScreen({ navigation, route }) {
         <TouchableOpacity style={s.cancelBtn} onPress={() => navigation.goBack()}>
           <Text style={s.cancelBtnText}>취소</Text>
         </TouchableOpacity>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardScreen>
+    </View>
   );
 }
 

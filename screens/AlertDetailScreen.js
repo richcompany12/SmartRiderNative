@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
-  ScrollView, StyleSheet, Alert, ActivityIndicator,
-  KeyboardAvoidingView, Platform
+  StyleSheet, Alert, ActivityIndicator,
 } from 'react-native';
+import KeyboardScreen from './KeyboardScreen';   // ★ v6.1 — 키보드 가림 공통 부품
+import { fixTextKeyboard } from '../keyboardMode';   // ★ v6.1 — 숫자판 갇힘
 import { getAlertPoint, updateAlertPoint, deleteAlertPoint } from '../firebaseDB';
 import { syncAlertsToService } from '../alertSync';
 import { useAuth } from '../AuthContext';
@@ -109,11 +110,10 @@ export default function AlertDetailScreen({ navigation, route }) {
   );
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: c.bg }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    <KeyboardScreen
+      style={{ backgroundColor: c.bg }}
+      contentContainerStyle={{ padding: space.lg, paddingBottom: 80 }}
     >
-    <ScrollView style={s.container} contentContainerStyle={{ paddingBottom: 340 }}>
       <View style={s.banner}>
         <Text style={s.bannerText}>{typeLabel(point.alertType)}</Text>
       </View>
@@ -131,6 +131,8 @@ export default function AlertDetailScreen({ navigation, route }) {
             style={s.input}
             value={point.name}
             onChangeText={v => setPoint(p => ({ ...p, name: v }))}
+            onFocus={() => fixTextKeyboard()}
+            inputMode="text"
             placeholderTextColor={c.textFaint}
           />
 
@@ -154,6 +156,8 @@ export default function AlertDetailScreen({ navigation, route }) {
             style={s.input}
             value={point.memo || ''}
             onChangeText={v => setPoint(p => ({ ...p, memo: v }))}
+            onFocus={() => fixTextKeyboard()}
+            inputMode="text"
             placeholder="예: 삼거리 신호등 옆"
             placeholderTextColor={c.textFaint}
           />
@@ -221,8 +225,7 @@ export default function AlertDetailScreen({ navigation, route }) {
       <TouchableOpacity style={s.btnBack} onPress={() => navigation.goBack()}>
         <Text style={s.btnBackText}>← 뒤로</Text>
       </TouchableOpacity>
-    </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardScreen>
   );
 }
 

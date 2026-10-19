@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, ScrollView,
+  View, Text, TextInput, TouchableOpacity,
   StyleSheet, Alert, ActivityIndicator,
 } from 'react-native';
+import KeyboardScreen from './KeyboardScreen';   // ★ v6.1 — 키보드 가림 공통 부품
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme';
@@ -104,10 +105,14 @@ export default function DeleteAccountScreen({ navigation }) {
         <Text style={s.screenTitle}>회원 탈퇴</Text>
       </View>
 
-      <ScrollView contentContainerStyle={{
-        paddingHorizontal: space.lg,
-        paddingBottom: insets.bottom + 40,
-      }}>
+      {/* ★ v6.1 — 비밀번호 칸 아래 동의 체크·탈퇴 버튼까지 보이게 extraGap 크게 */}
+      <KeyboardScreen
+        extraGap={130}
+        contentContainerStyle={{
+          paddingHorizontal: space.lg,
+          paddingBottom: insets.bottom + 40,
+        }}
+      >
         <Text style={s.email}>{user?.email || ''}</Text>
 
         <View style={s.card}>
@@ -174,7 +179,7 @@ export default function DeleteAccountScreen({ navigation }) {
             ? <ActivityIndicator color="#fff" />
             : <Text style={s.delBtnText}>탈퇴하기</Text>}
         </TouchableOpacity>
-      </ScrollView>
+      </KeyboardScreen>
     </View>
   );
 }

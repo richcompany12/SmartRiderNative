@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, Image, ScrollView,
-  StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, Linking   
+  View, Text, TextInput, TouchableOpacity, Image,
+  StyleSheet, ActivityIndicator, Linking,
 } from 'react-native';
+import KeyboardScreen from './KeyboardScreen';   // ★ v6.1 — 키보드 가림 공통 부품
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../AuthContext';
@@ -49,17 +50,14 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: c.bg }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    <KeyboardScreen
+      style={{ backgroundColor: c.bg }}
+      extraGap={80}
+      contentContainerStyle={[
+        s.scroll,
+        { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 40 },
+      ]}
     >
-      <ScrollView
-        contentContainerStyle={[
-          s.scroll,
-          { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 40 },
-        ]}
-        keyboardShouldPersistTaps="handled"
-      >
         {/* 로고 */}
         <Image
           source={require('../assets/logo.png')}
@@ -158,8 +156,7 @@ export default function LoginScreen() {
             <Text style={s.policyText}>개인정보처리방침</Text>
           </TouchableOpacity>
         </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardScreen>
   );
 }
 

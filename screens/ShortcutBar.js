@@ -163,9 +163,10 @@ const makeStyles = (c, font, space, radius) => StyleSheet.create({
   },
   addText: { color: c.accent, fontWeight: '500' },
 
+  // ★ v6.1 — 가운데 대신 위쪽에. 키보드가 아래에서 올라와도 버튼이 안 가린다
   backdrop: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'center', padding: space.xl,
+    justifyContent: 'flex-start', padding: space.xl, paddingTop: 120,
   },
   sheet: { backgroundColor: c.surface, borderRadius: radius.md, padding: space.lg },
   title: { ...font.head, color: c.text, marginBottom: space.md },

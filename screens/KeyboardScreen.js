@@ -33,7 +33,6 @@ export default function KeyboardScreen({
     box.measureInWindow((x, y, w, h) => {
       if (kbTop.current == null) return;
       const p = Math.max(0, Math.round(y + h - kbTop.current));
-      console.log('[KB] pad=' + p + ' box=' + Math.round(y) + '~' + Math.round(y + h));   // ★ 테스트용 — 스토어 제출 전 삭제
       setPad(p);
     });
   };
@@ -56,7 +55,6 @@ export default function KeyboardScreen({
           const over = ty + th + gap - visibleBottom;
           const room = Math.max(0, iy - by - 8);    // 누른 칸 윗부분이 화면 위로 넘어가지 않게
           const d = Math.min(over, room);
-          console.log('[KB] reveal box=' + Math.round(by) + '~' + Math.round(by + bh) + ' input=' + Math.round(iy) + '+' + Math.round(ih) + ' target=' + Math.round(ty) + '+' + Math.round(th) + ' kbTop=' + Math.round(kbTop.current) + ' move=' + Math.round(d));   // ★ 테스트용 — 스토어 제출 전 삭제
           if (d > 0) scrollRef.current?.scrollTo({ y: scrollY.current + d, animated: true });
         });
       });
@@ -94,7 +92,6 @@ export default function KeyboardScreen({
       setTimeout(reveal, 150);
       setTimeout(reveal, 450);              // 키보드가 다 올라온 뒤 한 번 더
       startWatch();
-      console.log('[KB] show screenY=' + e.endCoordinates.screenY + ' h=' + e.endCoordinates.height);   // ★ 테스트용 — 스토어 제출 전 삭제
     });
     const hide = Keyboard.addListener('keyboardDidHide', () => {
       kbTop.current = null;

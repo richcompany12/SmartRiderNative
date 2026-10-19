@@ -573,9 +573,10 @@ const makeStyles = (c, font, space, radius, TAP) => StyleSheet.create({
   quitText: { ...font.tiny, color: c.textFaint },                                      // ★ 새 줄
 
   // ── 비밀번호 창 ─────────────────────────────────────
+  // ★ v6.1 — 가운데 대신 위쪽에. 키보드가 아래에서 올라와도 버튼이 안 가린다
   modalBg: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.55)',
-    justifyContent: 'center', padding: space.lg,
+    justifyContent: 'flex-start', padding: space.lg, paddingTop: 90,
   },
   modalBox: {
     backgroundColor: c.surface, borderRadius: radius.lg,

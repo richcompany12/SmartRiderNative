@@ -142,14 +142,14 @@ git push
 
 ---
 
-## 4. 지금 상태와 남은 일 (10-11 기준)
+## 4. 지금 상태와 남은 일 (10-19 기준)
 
 - 스토어: **v6(1.0.4) 게시 완료 (10-08)** / 비공개 테스트 12명, 프로덕션 신청 가능일 **10-04~10-05 (Play Console에서 재확인)**
 - 코드: versionCode **7** (1.0.5), `APP_VERSION_CODE = 7`, `USE_TEST_ADS = true`
-- **v6.1 (1.0.5) = 지도 길게 누르기(✅ 코드 완료, `MapScreen.js`) + 키보드(⬜ 다음 작업)** — 10-19 범위 확정. R8 등 큰 작업은 v7. 상세·공기계 확인 목록은 `docs/기획요약.md` 2-0
-  - 키보드: 등록·수정 화면 **도착 메모 1부터 아래 칸이 키보드에 가림** + 숫자판이 안 바뀌는 경우(테스터 폰). 나머지 입력 화면도 **공통 방식으로 한꺼번에**. v7 2번 edge-to-edge를 앞당겨 같이
-  - 원인 후보: `gradle.properties` `edgeToEdgeEnabled=true` + 매니페스트 `adjustResize` → Android 15+에선 키보드 높이만큼 창이 안 줄어듦. 화면마다 `KeyboardAvoidingView`가 따로 있고(Register·Detail·AlertDetail·Suggest·Login), Search·ShortcutBar·Sidebar·DeleteAccount엔 없음
-  - 폰: 메인폰 안드로이드 17 / 공기계 13(네이버 스마트보드). **공기계에선 안 보일 수 있어 메인폰 확인 필요** (메인폰 설치 금지 → 스토어 내부 테스트로)
+- **v6.1 (1.0.5) = 지도 길게 누르기 + 키보드 + 목록 이름 2줄 — ✅ 코드·공기계 확인 끝 (10-19), 비공개 테스트 제출 준비.** 정식 출시 신청은 게시된 1.0.4로 (10-19 결정). 상세는 개발문서 3-7판 1-0000000장
+  - 키보드 공통 부품: 입력 화면은 ScrollView 대신 `screens/KeyboardScreen.js` / 숫자판 규칙 `keyboardMode.js`(`markKeyboard`·`fixTextKeyboard`) / 전환 버튼 `screens/KeyboardToggle.js`. **새 입력 화면도 이걸 쓴다.** `KeyboardAvoidingView` 새로 쓰지 말 것 (edge-to-edge라 안드로이드에서 안 먹음)
+  - 따로 뜨는 창(Modal)에 입력칸이 있으면 **가운데 말고 위쪽**에 둔다 (Sidebar 비번 창·ShortcutBar 편집 창)
+  - **메인폰(안드17) 키보드 재확인은 비공개 테스트로 받아서** (메인폰 설치 금지)
 - **v6 (1.0.4)** AAB `D:\app\배포보관\smartrider_v6_20261008.aab`. **`meta/minVersionCode = 6`은 게시 후 바로 켜지 않음** — 1~2주 지켜보고 대표님이 결정 (켤 땐 테스터 공지 먼저, 10-08 결정)
   - 제출 때 Play Console 경고 3개 → **v7 목록** (R8, Android 15 edge-to-edge, 대형 화면 세로 고정)
 - v5 AAB: `D:\app\배포보관\smartrider_v5_20260929.aab`
@@ -220,6 +220,7 @@ git push
 1. ⬜ **R8 코드 최적화·난독화 켜기** — 기한 **2027년 2월**. `android/app/build.gradle` `minifyEnabled`(R8) + `proguard-rules.pro`. ⚠️ 켜면 코틀린 서비스·RN 모듈·광고·Firebase가 이름 바뀜으로 깨질 수 있어 **공기계 전체 기능 테스트 필수** (토스트·강력알림·플로팅·광고·로그인·사진·백업, 설치 직후 40초)
 2. ⬜ **Android 15 지원 중단 API (edge-to-edge)** — 라이브러리 업데이트로 대응. targetSdk 36이라 화면이 상태바·하단바 밑까지 그려짐 (v6 8번 위치 선택 버튼 가림이 같은 원인). 업데이트 후 하단 여백 남은 화면 점검
 3. ⬜ **대형 화면 세로 고정 제한** — 우선순위 낮음. 태블릿·폴드에서 세로 고정이 무시될 수 있음 (`AndroidManifest` `screenOrientation`)
+4. ⬜ **`react-native-keyboard-controller` 도입 여부** — reanimated 4.1.1 + worklets 0.5.1이 필수(네이티브 3개)라 v6.1은 JS 공통 부품으로 처리. **R8 작업 때 같이 판단** (10-19). 2번 경고는 라이브러리 쪽 호출이라 v6.1 키보드 수정과 별개로 남음
 
 **v6에서 넘어온 것**
 - 지역 단위 내려받기 (지금은 전부 받아도 가벼움)
