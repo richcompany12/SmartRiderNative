@@ -125,7 +125,8 @@ export default function SearchScreen({ navigation }) {
           style={s.input}
           value={term}
           onChangeText={onChangeTerm}
-          placeholder="이름, 초성, 숫자로 검색"
+          placeholder="이름, 초성, 숫자"
+          numberOfLines={1}
           placeholderTextColor={c.textFaint}
           inputMode={numericMode ? 'numeric' : 'text'}
           onFocus={() => markKeyboard(numericRef.current)}   // ★ v6.1
