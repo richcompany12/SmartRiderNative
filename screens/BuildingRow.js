@@ -39,9 +39,9 @@ export default function BuildingRow({ item, onPress, onCopy }) {
       <View style={s.body}>
         <View style={s.nameRow}>
           {item.isFav && (
-            <Icon name="star" size={15} color={c.star} style={{ marginRight: 4 }} />
+            <Icon name="star" size={15} color={c.star} style={{ marginRight: 4, marginTop: 3 }} />
           )}
-          <Text style={item.isFav ? s.nameFav : s.name} numberOfLines={1}>
+          <Text style={item.isFav ? s.nameFav : s.name} numberOfLines={2}>
             {item.name}
           </Text>
         </View>
@@ -70,7 +70,8 @@ const makeStyles = (c, font, space, TAP) => StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.line,
   },
   body: { flex: 1, minWidth: 0, marginLeft: space.md, marginRight: space.sm },
-  nameRow: { flexDirection: 'row', alignItems: 'center' },
+  // ★ v6.1 — 이름은 2줄까지 (긴 이름만 두 줄). 별은 첫 줄 옆에 붙게 위쪽 정렬
+  nameRow: { flexDirection: 'row', alignItems: 'flex-start' },
   name: { ...font.body, color: c.text, flexShrink: 1 },
   nameFav: { ...font.bodyBold, color: c.text, flexShrink: 1 },
   sub: { ...font.sub, color: c.textMuted, marginTop: 2 },

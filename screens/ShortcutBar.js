@@ -13,12 +13,13 @@
 //   'shortcuts_memo' : 도착 메모 (등록 · 상세 수정)
 // 저장은 폰(AsyncStorage)에만 한다.
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, Modal, TextInput, StyleSheet, Alert,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../theme';
+import { fixTextKeyboard } from '../keyboardMode';   // ★ v6.1 — 메모 숫자판에서 열어도 글자판으로
 
 const DEFAULTS = ['길게', '눌러', '수정'];
 const MAX_ITEMS = 12;
@@ -39,6 +40,7 @@ export default function ShortcutBar({ storageKey, onPick }) {
   const [items, setItems] = useState(DEFAULTS);
   const [editIndex, setEditIndex] = useState(null);   // null: 닫힘 / -1: 추가 / 0~: 수정
   const [draft, setDraft] = useState('');
+  const draftRef = useRef(null);   // ★ v6.1
 
   useEffect(() => {
     let alive = true;
@@ -113,10 +115,13 @@ export default function ShortcutBar({ storageKey, onPick }) {
           <View style={s.sheet}>
             <Text style={s.title}>{editIndex === -1 ? '단축 버튼 추가' : '단축 버튼 수정'}</Text>
             <TextInput
+              ref={draftRef}
               style={s.input}
               value={draft}
               onChangeText={setDraft}
               maxLength={MAX_LEN}
+              onFocus={() => fixTextKeyboard(draftRef)}
+              inputMode="text"
               autoFocus
               placeholder="버튼에 넣을 글자"
               placeholderTextColor={c.textFaint}

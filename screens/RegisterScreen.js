@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
-  ScrollView, StyleSheet, Alert, ActivityIndicator,
-  KeyboardAvoidingView, Platform
+  StyleSheet, Alert, ActivityIndicator, Platform,
 } from 'react-native';
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,6 +19,9 @@ import ShortcutBar from './ShortcutBar';
 import { syncBuildingsToService } from './ProximityNotifier';          // ★ 새 줄    
 import { getCachedBuildings } from '../buildingsCache';                 // ★ 새 줄 (v6) — 근처 비슷한 건물 확인
 import { distanceKm } from '../alertSync';                              // ★ 새 줄 (v6)
+import KeyboardScreen from './KeyboardScreen';                          // ★ v6.1 — 키보드 가림
+import KeyboardToggle from './KeyboardToggle';                          // ★ v6.1 — 한/영·숫자 전환 공통 버튼
+import { markKeyboard, fixTextKeyboard } from '../keyboardMode';        // ★ v6.1 — 숫자판 갇힘
 
 // 건물 이름 최대 글자수.
 const NAME_MAX = 25;
@@ -100,7 +102,8 @@ export default function RegisterScreen({ navigation, route }) {
   const memo2Ref = useRef(null);
   const shortcutRef = useRef(null);                                     // ★ 새 줄
   const noteRef = useRef(null);                                         // ★ 새 줄
-  const kbNumericRef = useRef(false);   // ★ 새 줄 — 지금 떠 있는 키보드가 숫자판인지
+  const memoGroupRef = useRef(null);    // ★ v6.1 — 도착 메모 1·2 + 단축 버튼 묶음
+  const memoNumRef = useRef(true);      // ★ v6.1 — 메모 칸이 숫자판 모드인지 (state보다 먼저 바뀌게 ref로)
   const selRef = useRef({});            // ★ 새 줄 — 칸별 마지막 커서 위치
 
   useEffect(() => {
@@ -144,20 +147,18 @@ export default function RegisterScreen({ navigation, route }) {
   const toggleMemoKeyboard = () => {
     const target = activeField === 'memo2' ? memo2Ref : memoRef;
     target.current?.blur();
-    kbNumericRef.current = !memoNumeric;                                // ★ 새 줄
+    memoNumRef.current = !memoNumeric;                                  // ★ v6.1
+    markKeyboard(!memoNumeric);                                         // ★ v6.1
     setMemoNumeric(p => !p);
     setTimeout(() => target.current?.focus(), 50);
   };
 
-  // ★ 새 줄 — 글자 칸에 들어왔는데 숫자판이 떠 있으면, 키보드를 내렸다 올려서 글자판으로 바꾼다
-  const onTextFocus = (field, ref) => {                                 // ★ 새 줄
-    setActiveField(field);                                              // ★ 새 줄
-    if (kbNumericRef.current) {                                         // ★ 새 줄
-      kbNumericRef.current = false;                                     // ★ 새 줄
-      ref.current?.blur();                                              // ★ 새 줄
-      setTimeout(() => ref.current?.focus(), 80);                       // ★ 새 줄
-    }                                                                   // ★ 새 줄
-  };                                                                    // ★ 새 줄
+  // 글자 칸에 들어왔는데 숫자판이 떠 있으면, 키보드를 내렸다 올려서 글자판으로 바꾼다
+  // ★ v6.1 — 검색 화면 등 다른 곳에서 넘어온 숫자판도 잡게 keyboardMode.js 공통 규칙으로
+  const onTextFocus = (field, ref) => {
+    setActiveField(field);
+    fixTextKeyboard(ref);
+  };
 
   // 지금 서 있는 곳을 건물 위치로 잡는다.
   // 라이더는 그 건물 앞에서 등록하므로 지도를 여는 것보다 빠를 때가 많다.
@@ -368,15 +369,12 @@ export default function RegisterScreen({ navigation, route }) {
         </Text>
       </View>
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      {/* ★ v6.1 — 키보드 가림 공통 부품. 칸 아래 단축 버튼까지 보이게 extraGap 크게 */}
+      <KeyboardScreen
+        extraGap={72}
+        revealFor={input => (regMode === 'building' && (input === memoRef.current || input === memo2Ref.current) ? memoGroupRef.current : null)}
+        contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: insets.bottom + 40 }}
       >
-        <ScrollView
-          style={{ flex: 1 }}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: 320 }}
-        >
           {/* 탭 — 어드민만 알림지점 등록 가능 */}
           {isAdmin && (
             <View style={s.tabRow}>
@@ -462,6 +460,7 @@ export default function RegisterScreen({ navigation, route }) {
             onChangeText={setName}
             maxLength={NAME_MAX}
             onFocus={() => onTextFocus('name', nameRef)}
+            inputMode="text"                                                             // ★ v6.1
             onSelectionChange={e => { selRef.current.name = e.nativeEvent.selection; }}   // ★ 새 줄
             placeholder={regMode === 'building' ? '예: 능동 헤리움' : '예: 주차단속 지역'}
             placeholderTextColor={c.textFaint}
@@ -485,25 +484,21 @@ export default function RegisterScreen({ navigation, route }) {
           {regMode === 'building' ? (
             <>
                {/* 도착 메모 */}
+              {/* ★ v6.1 — 메모 1·2와 단축 버튼을 한 묶음으로. 메모 1을 눌러도 단축 버튼까지 키보드 위로 */}
+              <View ref={memoGroupRef} collapsable={false}>
               <View style={s.labelRow}>
                 <Text style={s.label}>
                   도착 메모{isAdmin && saveScope === 'public' ? '  🔒 내 폰에만' : ''}       {/* ★ 바뀐 줄 */}
                 </Text>
-                <TouchableOpacity
-                  onPress={toggleMemoKeyboard}
-                  style={[s.kbBtn, memoNumeric && s.kbBtnOn]}
-                >
-                  <Text style={[s.kbText, memoNumeric && s.kbTextOn]}>
-                    {memoNumeric ? '123' : '가나다'}
-                  </Text>
-                </TouchableOpacity>
+                <KeyboardToggle numeric={memoNumeric} onPress={toggleMemoKeyboard} style={{ marginBottom: 4 }} />
+                {/* ★ v6.1 — 공통 전환 버튼 */}
               </View>
               <TextInput
                 ref={memoRef}
                 style={[s.input, s.inputMono]}
                 value={memo}
                 onChangeText={setMemo}
-                onFocus={() => { setActiveField('memo'); kbNumericRef.current = memoNumeric; }}
+                onFocus={() => { setActiveField('memo'); markKeyboard(memoNumRef.current); }}   // ★ v6.1
                 onSelectionChange={e => { selRef.current.memo = e.nativeEvent.selection; }}   // ★ 새 줄
                 placeholder="예: 후문 계단이 빨라요"
                 placeholderTextColor={c.textFaint}
@@ -519,7 +514,7 @@ export default function RegisterScreen({ navigation, route }) {
                 style={[s.input, s.inputMono]}
                 value={memo2}
                 onChangeText={setMemo2}
-                onFocus={() => { setActiveField('memo2'); kbNumericRef.current = memoNumeric; }}
+                onFocus={() => { setActiveField('memo2'); markKeyboard(memoNumRef.current); }}  // ★ v6.1
                 onSelectionChange={e => { selRef.current.memo2 = e.nativeEvent.selection; }}  // ★ 새 줄
                 placeholder="추가로 남길 메모"
                 placeholderTextColor={c.textFaint}
@@ -531,6 +526,7 @@ export default function RegisterScreen({ navigation, route }) {
                 storageKey="shortcuts_memo"
                 onPick={ch => insertTo(activeField === 'memo2' ? 'memo2' : 'memo', ch)}
               />
+              </View>
 
               <Text style={s.label}>위치</Text>
               <LocationBox />
@@ -556,6 +552,7 @@ export default function RegisterScreen({ navigation, route }) {
                 value={shortcut}
                 ref={shortcutRef}
                 onFocus={() => onTextFocus('shortcut', shortcutRef)}
+                inputMode="text"                                                         // ★ v6.1
                 onChangeText={setShortcut}
                 multiline
                 placeholderTextColor={c.textFaint}
@@ -567,6 +564,7 @@ export default function RegisterScreen({ navigation, route }) {
                 value={note}
                 ref={noteRef}
                 onFocus={() => onTextFocus('note', noteRef)}
+                inputMode="text"                                                         // ★ v6.1
                 onChangeText={setNote}
                 multiline
                 placeholderTextColor={c.textFaint}
@@ -594,7 +592,9 @@ export default function RegisterScreen({ navigation, route }) {
                 style={s.input}
                 value={memo}
                 onChangeText={setMemo}
-                onFocus={() => setActiveField('memo')}
+                ref={memoRef}                                                            // ★ v6.1
+                onFocus={() => onTextFocus('memo', memoRef)}                             // ★ v6.1
+                inputMode="text"                                                         // ★ v6.1
                 placeholder="예: 삼거리 신호등 옆"
                 placeholderTextColor={c.textFaint}
               />
@@ -628,8 +628,7 @@ export default function RegisterScreen({ navigation, route }) {
           <TouchableOpacity style={s.btnPlain} onPress={() => navigation.goBack()}>
             <Text style={s.btnPlainText}>취소</Text>
           </TouchableOpacity>
-        </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardScreen>
     </View>
   );
 }
@@ -704,13 +703,6 @@ const makeStyles = (c, font, space, radius, TAP) => StyleSheet.create({
   inputMono: { fontFamily: Platform.OS === 'android' ? 'monospace' : 'Menlo', fontSize: 18 },
   inputMulti: { minHeight: 80, textAlignVertical: 'top' },
 
-  kbBtn: {
-    paddingHorizontal: space.sm + 2, paddingVertical: 5,
-    borderRadius: radius.pill, backgroundColor: c.surfaceSoft, marginBottom: 4,
-  },
-  kbBtnOn: { backgroundColor: c.accent },
-  kbText: { ...font.tiny, fontWeight: '500', color: c.textSub },
-  kbTextOn: { color: c.onAccent },
 
   keyGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: space.sm },
   key: {

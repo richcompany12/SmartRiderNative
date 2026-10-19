@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
-  ScrollView, StyleSheet, Alert, ActivityIndicator, Share, Image,
+  StyleSheet, Alert, ActivityIndicator, Share, Image,
   Modal, Animated, PanResponder, Dimensions, StatusBar,
-  KeyboardAvoidingView, Platform
+  Platform
 } from 'react-native';
 import { getBuilding, updateBuilding, deleteBuilding } from '../firebaseDB';
 import { invalidateBuildingsCache } from '../buildingsCache';
@@ -19,7 +19,9 @@ import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { copyBuildingMemo } from '../copyUtil';
 import ShortcutBar from './ShortcutBar';   
-import { syncBuildingsToService } from './ProximityNotifier';          // ★ 새 줄                          
+import { syncBuildingsToService } from './ProximityNotifier';          // ★ 새 줄
+import KeyboardScreen from './KeyboardScreen';                          // ★ v6.1 — 키보드 가림
+import { fixTextKeyboard } from '../keyboardMode';                      // ★ v6.1 — 숫자판 갇힘
 import { useTheme } from '../theme';
 
 const SCREEN = Dimensions.get('window');
@@ -198,6 +200,7 @@ export default function DetailScreen({ navigation, route }) {
   const [memoField, setMemoField] = useState('memo');                     // ★ 새 줄
   const selRef = useRef({});      // ★ 새 줄 — 칸별 마지막 커서 위치
   const inputRefs = useRef({});   // ★ 새 줄 — 칸별 입력칸
+  const memoGroupRef = useRef(null);   // ★ v6.1 — 도착 메모 1·2 + 단축 버튼 묶음
   const [saving, setSaving] = useState(false);
   const busyRef = useRef(false);  // ★ 새 줄 (v6) — 저장·올리기를 누르는 순간 잠금 (state는 다시 그린 뒤에야 걸려서 두 번 탭이 통과함)
   const [justSaved, setJustSaved] = useState(route.params?.justSaved === true);  // ★ 새 줄 (v6) — 등록 화면 공용 저장 직후 안내
@@ -484,15 +487,12 @@ export default function DetailScreen({ navigation, route }) {
           </TouchableOpacity>
         </View>
 
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        {/* ★ v6.1 — 키보드 가림 공통 부품. 칸 아래 단축 버튼까지 보이게 extraGap 크게 */}
+        <KeyboardScreen
+          extraGap={72}
+          revealFor={input => (input === inputRefs.current.memo || input === inputRefs.current.memo2 ? memoGroupRef.current : null)}
+          contentContainerStyle={{ padding: space.lg, paddingBottom: insets.bottom + 40 }}
         >
-          <ScrollView
-            style={{ flex: 1 }}
-            contentContainerStyle={{ padding: space.lg, paddingBottom: insets.bottom + 40 }}
-            keyboardShouldPersistTaps="handled"
-          >
 
             {editMode ? (
               <>
@@ -523,6 +523,8 @@ export default function DetailScreen({ navigation, route }) {
                   value={building.name}
                   onChangeText={v => set('name', v.slice(0, 25))}
                   ref={r => { inputRefs.current.name = r; }}                               // ★ 새 줄
+                  onFocus={() => fixTextKeyboard(() => inputRefs.current.name)}            // ★ v6.1
+                  inputMode="text"                                                         // ★ v6.1
                   onSelectionChange={e => { selRef.current.name = e.nativeEvent.selection; }}  // ★ 새 줄
                   maxLength={25}
                   placeholderTextColor={c.textFaint}
@@ -541,12 +543,15 @@ export default function DetailScreen({ navigation, route }) {
                   </TouchableOpacity>
                 )}
 
+                {/* ★ v6.1 — 메모 1·2와 단축 버튼을 한 묶음으로. 메모 1을 눌러도 단축 버튼까지 키보드 위로 */}
+                <View ref={memoGroupRef} collapsable={false}>
                 <Text style={s.label}>도착 메모</Text>
                 <TextInput
                   style={[s.input, s.inputMono]}
                   value={building.memo}
                   onChangeText={v => set('memo', v)}
-                  onFocus={() => setMemoField('memo')}
+                  onFocus={() => { setMemoField('memo'); fixTextKeyboard(() => inputRefs.current.memo); }}    // ★ v6.1
+                  inputMode="text"                                                         // ★ v6.1
                   ref={r => { inputRefs.current.memo = r; }}                               // ★ 새 줄
                   onSelectionChange={e => { selRef.current.memo = e.nativeEvent.selection; }}  // ★ 새 줄
                   placeholder="예: 후문 계단이 빨라요"
@@ -559,7 +564,8 @@ export default function DetailScreen({ navigation, route }) {
                   style={[s.input, s.inputMono]}
                   value={building.memo2}
                   onChangeText={v => set('memo2', v)}
-                  onFocus={() => setMemoField('memo2')}
+                  onFocus={() => { setMemoField('memo2'); fixTextKeyboard(() => inputRefs.current.memo2); }}  // ★ v6.1
+                  inputMode="text"                                                         // ★ v6.1
                   ref={r => { inputRefs.current.memo2 = r; }}                              // ★ 새 줄
                   onSelectionChange={e => { selRef.current.memo2 = e.nativeEvent.selection; }} // ★ 새 줄
                   placeholder="추가로 남길 메모"
@@ -567,6 +573,7 @@ export default function DetailScreen({ navigation, route }) {
                   multiline
                 />
                 <ShortcutBar storageKey="shortcuts_memo" onPick={ch => append(memoField, ch)} />
+                </View>
 
 
                 <Text style={s.label}>샛길 정보</Text>
@@ -574,6 +581,9 @@ export default function DetailScreen({ navigation, route }) {
                   style={[s.input, s.inputMulti]}
                   value={building.shortcut}
                   onChangeText={v => set('shortcut', v)}
+                  ref={r => { inputRefs.current.shortcut = r; }}                           // ★ v6.1
+                  onFocus={() => fixTextKeyboard(() => inputRefs.current.shortcut)}        // ★ v6.1
+                  inputMode="text"                                                         // ★ v6.1
                   multiline
                   placeholderTextColor={c.textFaint}
                 />
@@ -583,6 +593,9 @@ export default function DetailScreen({ navigation, route }) {
                   style={[s.input, s.inputMulti]}
                   value={building.note}
                   onChangeText={v => set('note', v)}
+                  ref={r => { inputRefs.current.note = r; }}                               // ★ v6.1
+                  onFocus={() => fixTextKeyboard(() => inputRefs.current.note)}            // ★ v6.1
+                  inputMode="text"                                                         // ★ v6.1
                   multiline
                   placeholderTextColor={c.textFaint}
                 />                  
@@ -797,8 +810,7 @@ export default function DetailScreen({ navigation, route }) {
                 {!!saveMsg && <Text style={s.savedMsg}>{saveMsg}</Text>}
               </>
             )}
-          </ScrollView>
-        </KeyboardAvoidingView>
+        </KeyboardScreen>
       </View>
 
       {/* Modal은 ScrollView 밖에 둬야 터치(핀치)를 뺏기지 않는다 */}

@@ -10,6 +10,8 @@ import BuildingRow from './BuildingRow';
 import { getCachedBuildings } from '../buildingsCache';
 import { useTheme } from '../theme';
 import ShortcutBar from './ShortcutBar';
+import KeyboardToggle from './KeyboardToggle';   // ★ v6.1 — 한/영·숫자 전환 공통 버튼
+import { markKeyboard } from '../keyboardMode';   // ★ v6.1 — 숫자판인 채로 등록 화면에 넘어가는 것 막기
 
 const PAGE = 20;
 
@@ -46,6 +48,7 @@ export default function SearchScreen({ navigation }) {
   const [term, setTerm] = useState('');
   const [buildings, setBuildings] = useState([]);
   const [numericMode, setNumericMode] = useState(true);  // 기본 숫자패드
+  const numericRef = useRef(true);                         // ★ v6.1 — 키보드 바꿀 때 state보다 먼저 바뀌게
   const [shown, setShown] = useState(PAGE);
   const inputRef = useRef(null);
 
@@ -80,6 +83,8 @@ export default function SearchScreen({ navigation }) {
 
   const toggleKeyboard = () => {
     inputRef.current?.blur();
+    numericRef.current = !numericMode;   // ★ v6.1
+    markKeyboard(!numericMode);          // ★ v6.1
     setNumericMode(p => !p);
     setTimeout(() => inputRef.current?.focus(), 50);
   };
@@ -123,20 +128,15 @@ export default function SearchScreen({ navigation }) {
           placeholder="이름, 초성, 숫자로 검색"
           placeholderTextColor={c.textFaint}
           inputMode={numericMode ? 'numeric' : 'text'}
+          onFocus={() => markKeyboard(numericRef.current)}   // ★ v6.1
         />
         {term.length > 0 && (
           <TouchableOpacity onPress={() => onChangeTerm('')} style={s.clearBtn}>
             <Icon name="close-circle" size={19} color={c.textFaint} />
           </TouchableOpacity>
         )}
-        <TouchableOpacity
-          onPress={toggleKeyboard}
-          style={[s.kbBtn, numericMode && s.kbBtnOn]}
-        >
-          <Text style={[s.kbText, numericMode && s.kbTextOn]}>
-            {numericMode ? '123' : '가나다'}
-          </Text>
-        </TouchableOpacity>
+        <KeyboardToggle numeric={numericMode} onPress={toggleKeyboard} />
+        {/* ★ v6.1 — 공통 전환 버튼 */}
       </View>
 
       {/* 단축 검색어 — 등록 화면의 건물 이름 버튼과 같은 목록 */}
@@ -193,13 +193,6 @@ const makeStyles = (c, font, space, radius, TAP) => StyleSheet.create({
   },
   input: { flex: 1, ...font.body, color: c.text, paddingVertical: space.sm },
   clearBtn: { padding: 2 },
-  kbBtn: {
-    paddingHorizontal: space.sm + 2, paddingVertical: 5, borderRadius: radius.pill,
-    backgroundColor: c.surfaceSoft,
-  },
-  kbBtnOn: { backgroundColor: c.accent },
-  kbText: { ...font.tiny, fontWeight: '500', color: c.textSub },
-  kbTextOn: { color: c.onAccent },
 
   chipScroll: { flexGrow: 0, marginTop: space.md },
   chipRow: { gap: space.sm, paddingHorizontal: space.lg },
