@@ -6,7 +6,7 @@ import { WebView } from 'react-native-webview';
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { useTheme } from '../theme';
 import * as Location from 'expo-location';
-import { getAllAlertPoints } from '../firebaseDB';
+import { getAllAlertPoints, getAllSignals } from '../firebaseDB';   // ★ 10-20 — 사거리 신호 핀
 import { getCachedBuildings } from '../buildingsCache';
 import { useAuth } from '../AuthContext';                              // ★ 신호 등록 버튼은 어드민만 (10-20)
 
@@ -46,6 +46,7 @@ export default function MapScreen({ navigation }) {
   const webViewRef = useRef(null);
   const [buildings, setBuildings] = useState([]);
   const [alertPoints, setAlertPoints] = useState([]);
+  const [signals, setSignals] = useState([]);                            // ★ 10-20 — 사거리 신호 (모두에게 표시)
   const [myLocation, setMyLocation] = useState(null);
   const [shown, setShown] = useState({ mine: 0, pub: 0, alert: 0 });
 
@@ -85,6 +86,12 @@ export default function MapScreen({ navigation }) {
     const aList = await getAllAlertPoints();
     setBuildings(bList);
     setAlertPoints(aList);
+    // ★ 10-20 — 신호는 곁다리라 따로 try. 실패해도 건물·카메라 핀은 그대로
+    try {
+      setSignals(await getAllSignals());
+    } catch (e) {
+      console.log('[MAP] 신호 목록 실패:', e.message);
+    }
   };
 
   useEffect(() => {
@@ -109,7 +116,7 @@ export default function MapScreen({ navigation }) {
   useEffect(() => {
     if (!myLocation) return;
     sendToMap();
-  }, [myLocation, buildings, alertPoints]);
+  }, [myLocation, buildings, alertPoints, signals]);
 
   const sendToMap = () => {
     // 지도에 핀이 실제로 찍히는 조건.
@@ -131,11 +138,22 @@ export default function MapScreen({ navigation }) {
       alert: nearAlerts.length,
     });
 
+    // ★ 10-20 — 사거리 신호 핀. 중심 좌표를 location으로 넘겨 다른 핀과 같은 방식으로 그린다
+    const signalPins = signals
+      .filter(sg => sg && sg.center && !isNaN(parseFloat(sg.center.lat)) && !isNaN(parseFloat(sg.center.lng)))
+      .map(sg => ({
+        id: sg.id, name: sg.name || '사거리',
+        location: { lat: parseFloat(sg.center.lat), lng: parseFloat(sg.center.lng) },
+        phaseCount: Array.isArray(sg.phases) ? sg.phases.length : 0,
+      }));
+
     const msg = JSON.stringify({
       type: 'INIT',
       myLocation,
       buildings: near,
       alertPoints: nearAlerts,
+      signals: signalPins,
+      isAdmin: !!isAdminRef.current,
     });
     webViewRef.current?.postMessage(msg);
   };
@@ -253,6 +271,9 @@ export default function MapScreen({ navigation }) {
         // 알림지점과 건물은 저장 위치가 달라서 화면도 따로 간다
         if (data.kind === 'alert') {
           navigation.navigate('AlertDetail', { alertId: data.id });
+        } else if (data.kind === 'signal') {
+          // ★ 10-20 — 사거리 신호는 어드민만 수정 화면으로
+          if (isAdminRef.current) navigation.navigate('SignalRegister', { signalId: data.id });
         } else {
           navigation.navigate('Detail', { buildingId: data.id });
         }
@@ -336,6 +357,9 @@ export default function MapScreen({ navigation }) {
     .overlay-scope-public { color: #185FA5; }
     .overlay-memo2 { margin-top: 4px; background: #FEF6E7; color: #B45309; }
     .overlay-alert { border-left-color: #dc2626; }
+    .overlay-signal { border-left-color: #D85A30; }
+    .overlay-signal-type { font-size: 12px; font-weight: bold; color: #D85A30; margin-bottom: 4px; }
+    .overlay-signal-sub { margin-top: 4px; font-size: 13px; color: #6B675F; }
     .overlay-type { font-size: 12px; font-weight: bold; color: #b91c1c; margin-bottom: 4px; }
     .overlay-important { display: inline-block; font-size: 11px; font-weight: bold; color: #fff; background: #dc2626; border-radius: 4px; padding: 2px 6px; margin-bottom: 4px; }
     .overlay-hint { font-size: 10px; color: #9ca3af; margin-top: 6px; text-align: center; }
@@ -381,6 +405,21 @@ export default function MapScreen({ navigation }) {
       return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
     }
 
+    // ★ 10-20 — 사거리 신호 핀: 검은 신호등 상자 + 빨강·노랑·초록 점
+    function makeSignalPin(big) {
+      var w = big ? 30 : 24, h = big ? 42 : 34;
+      var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '" viewBox="0 0 24 34">'
+        + '<rect x="2" y="1" width="20" height="28" rx="5" fill="#222222" stroke="#ffffff" stroke-width="1.5"/>'
+        + '<circle cx="12" cy="8" r="3.4" fill="#E53935"/>'
+        + '<circle cx="12" cy="15" r="3.4" fill="#FBC02D"/>'
+        + '<circle cx="12" cy="22" r="3.4" fill="#43A047"/>'
+        + '<path d="M8 29 L12 34 L16 29 Z" fill="#222222"/>'
+        + '</svg>';
+      return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+    }
+    var SIGNAL_IMG = null, SIGNAL_IMG_SELECTED = null;
+    var mapIsAdmin = false;
+
     var PIN_MINE = null, PIN_PUBLIC = null, PIN_SELECTED = null;
     var PIN_IMPORTANT = null;                                                        // ★ 새 줄
     var ALERT_IMG = null, ALERT_IMG_SELECTED = null;
@@ -396,6 +435,8 @@ export default function MapScreen({ navigation }) {
       PIN_IMPORTANT = new kakao.maps.MarkerImage(makePin('#E8830C', '!'), new kakao.maps.Size(30, 42));   // ★ 새 줄 — 주황 + !
       ALERT_IMG          = new kakao.maps.MarkerImage(ALERT_ICON_URL, new kakao.maps.Size(35, 35));
       ALERT_IMG_SELECTED = new kakao.maps.MarkerImage(ALERT_ICON_URL, new kakao.maps.Size(46, 46));
+      SIGNAL_IMG          = new kakao.maps.MarkerImage(makeSignalPin(false), new kakao.maps.Size(24, 34));
+      SIGNAL_IMG_SELECTED = new kakao.maps.MarkerImage(makeSignalPin(true), new kakao.maps.Size(30, 42));
     }
 
     function pinImage(isMine) {
@@ -605,7 +646,72 @@ export default function MapScreen({ navigation }) {
         placedMarkers.push(marker);
       });
       if (alertClusterer) alertClusterer.addMarkers(alertMarkers);   // ★ 새 줄
+
+      // ★ 10-20 — 사거리 신호 핀. 개수가 적어서 뭉치지 않고 하나씩 그린다
+      mapIsAdmin = !!data.isAdmin;
+      (data.signals || []).forEach(function(sg) {
+        var marker = new kakao.maps.Marker({
+          position: new kakao.maps.LatLng(sg.location.lat, sg.location.lng),
+          image: SIGNAL_IMG,
+          title: sg.name
+        });
+        marker.setZIndex(6);
+        marker.setMap(map);
+        kakao.maps.event.addListener(marker, 'click', function() {
+          selectPin(marker, SIGNAL_IMG, SIGNAL_IMG_SELECTED);
+          showSignalOverlay(sg);
+        });
+        placedMarkers.push(marker);
+      });
      }
+
+    // ★ 10-20 — 사거리 신호 메모창. 어드민은 두 번 탭 → 수정 화면
+    function showSignalOverlay(sg) {
+      if (currentOverlay) { currentOverlay.setMap(null); currentOverlay = null; }
+      var content = '<div class="ov-wrap">' +
+        '<div class="overlay overlay-signal" id="ov_' + sg.id + '">' +
+          '<div class="overlay-signal-type">사거리 신호 순서</div>' +
+          '<div class="overlay-head">' +
+            '<div class="overlay-name">' + esc(sg.name) + '</div>' +
+            '<div class="overlay-close" onclick="closeOverlay()">×</div>' +
+          '</div>' +
+          '<div class="overlay-signal-sub">' + sg.phaseCount + '단계 · 참고용</div>' +
+          '<div class="overlay-hint">' + (mapIsAdmin ? '빠르게 두 번 탭 → 수정' : '근처에서 멈추면 신호 순서를 알려줘요 (준비 중)') + '</div>' +
+        '</div>' +
+        '<div class="ov-tail"></div>' +
+      '</div>';
+      currentOverlay = new kakao.maps.CustomOverlay({
+        position: new kakao.maps.LatLng(sg.location.lat, sg.location.lng),
+        content: content, yAnchor: 1, map: map
+      });
+
+      setTimeout(function() {
+        var el = document.getElementById('ov_' + sg.id);
+        if (!el) return;
+        var lastTapAt = 0;
+        function isCloseBtn(t) {
+          return t && t.className && String(t.className).indexOf('overlay-close') > -1;
+        }
+        el.addEventListener('touchstart', function(e) {
+          e.stopPropagation();
+          if (isCloseBtn(e.target)) return;
+          e.preventDefault();
+        }, { passive: false });
+        el.addEventListener('touchend', function(e) {
+          e.stopPropagation();
+          if (isCloseBtn(e.target)) { closeOverlay(); return; }
+          if (!mapIsAdmin) return;
+          var now = Date.now();
+          if (now - lastTapAt < 400) {
+            lastTapAt = 0;
+            closeOverlay();
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'MARKER_CLICK', id: sg.id, kind: 'signal' }));
+          } else {
+            lastTapAt = now;
+          }
+        }, { passive: false });
+      }, 100);
+    }
 
     // 길게 누르기가 조용히 끝나지 않게, 못 열면 RN에 이유를 알린다
     function postLongPressFail(reason) {
