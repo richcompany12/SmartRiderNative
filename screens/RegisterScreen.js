@@ -397,6 +397,17 @@ export default function RegisterScreen({ navigation, route }) {
             </View>
           )}
 
+          {/* ★ 10-20 — 신호등 등록 (어드민). 잘못 들어왔어도 여기서 넘어간다. 지금 위치(길게 누른 곳)를 사거리 중심으로 */}
+          {isAdmin && !editingId && (
+            <TouchableOpacity
+              style={s.signalBtn}
+              onPress={() => navigation.replace('SignalRegister', { center: location || undefined })}
+            >
+              <Icon name="traffic-light" size={18} color={c.accent} />
+              <Text style={s.signalBtnText}>신호등 등록</Text>
+            </TouchableOpacity>
+          )}
+
           {/* 저장 위치 */}
           {regMode === 'building' && (
             isAdmin ? (
@@ -655,6 +666,14 @@ const makeStyles = (c, font, space, radius, TAP) => StyleSheet.create({
   tabText: { ...font.body, fontWeight: '500', color: c.textSub },
   tabTextOn: { color: c.onAccent },
   tabTextAlert: { color: '#fff' },
+
+  // ★ 10-20 — 신호등 등록으로 넘어가는 버튼 (어드민)
+  signalBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    minHeight: 44, marginBottom: space.md, borderRadius: radius.md,
+    borderWidth: 1.5, borderColor: c.accent,
+  },
+  signalBtnText: { ...font.body, fontWeight: '600', color: c.accent },
 
   scopeRow: { flexDirection: 'row', gap: space.sm },
   scopeBtn: {

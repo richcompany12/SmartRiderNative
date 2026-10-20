@@ -64,7 +64,7 @@ export const bumpVersion = async (kind) => {
   }
 };
 
-// kind: 'buildings' | 'alerts'
+// kind: 'buildings' | 'alerts' | 'signals'
 const loadVersioned = async (kind, path) => {
   const versionKey = `cache_${kind}_version`;
   const dataKey = `cache_${kind}_data`;
@@ -245,4 +245,46 @@ export const updateAlertPoint = async (point) => {
 export const deleteAlertPoint = async (id) => {
   await remove(ref(db, `${ALERTS_PATH}/${id}`));
   await bumpVersion('alerts');                                          // ★ 새 줄
+};
+
+// ─────────────────────────────────────────────────────────
+//  ★ 사거리 신호 순서 (10-20) — 어드민만 쓰고 모두가 내려받는다 (단속카메라와 같은 방식)
+//
+//  구조: signals/{id} = {
+//    name, center:{lat,lng},
+//    approaches: [{ key, name, lat, lng, radius }],   // 진입로 (정지선 근처 핀)
+//    phases: [{ moves: { [진입로 key]: 'S'|'L'|'SL' } }], // 단계 순서대로. S=직진 L=좌회전 SL=직좌
+//    updatedAt
+//  }
+//  라이더 위치는 여기 절대 안 들어간다. 판정은 폰 안에서만.
+// ─────────────────────────────────────────────────────────
+const SIGNALS_PATH = 'signals';
+
+export const getAllSignals = async () => {
+  return await loadVersioned('signals', SIGNALS_PATH);
+};
+
+export const getSignal = async (id) => {
+  const snapshot = await get(ref(db, `${SIGNALS_PATH}/${id}`));
+  if (!snapshot.exists()) return null;
+  return { id, ...snapshot.val() };
+};
+
+export const saveSignal = async (signal) => {
+  const { id, ...data } = signal;
+  const body = { ...data, updatedAt: Date.now() };
+  if (id) {
+    await set(ref(db, `${SIGNALS_PATH}/${id}`), body);
+    await bumpVersion('signals');
+    return id;
+  }
+  const newRef = push(ref(db, SIGNALS_PATH));
+  await set(newRef, body);
+  await bumpVersion('signals');
+  return newRef.key;
+};
+
+export const deleteSignal = async (id) => {
+  await remove(ref(db, `${SIGNALS_PATH}/${id}`));
+  await bumpVersion('signals');
 };

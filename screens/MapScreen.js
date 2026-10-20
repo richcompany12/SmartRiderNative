@@ -8,6 +8,7 @@ import { useTheme } from '../theme';
 import * as Location from 'expo-location';
 import { getAllAlertPoints } from '../firebaseDB';
 import { getCachedBuildings } from '../buildingsCache';
+import { useAuth } from '../AuthContext';                              // ★ 신호 등록 버튼은 어드민만 (10-20)
 
 const KAKAO_API_KEY = '7d65ade73c1b3e7d64687306911f7ce7';
 
@@ -53,6 +54,9 @@ export default function MapScreen({ navigation }) {
   // (예전 확인창의 늦은 콜백이 새 잠금을 풀어버리지 않게)
   const lockRef = useRef(null);        // { id, at } | null
   const lockSeqRef = useRef(0);
+  const { isAdmin } = useAuth();                                         // ★ 10-20
+  const isAdminRef = useRef(isAdmin);
+  isAdminRef.current = isAdmin;
 
   const releaseLock = (id) => {
     if (id == null || (lockRef.current && lockRef.current.id === id)) lockRef.current = null;
@@ -142,11 +146,11 @@ export default function MapScreen({ navigation }) {
 
   // 팝업을 닫은 뒤 시간차를 두고 이동한다.
   // 팝업이 떠 있는 상태에서 navigate를 부르면 에러 없이 조용히 무시되는 경우가 있다.
-  const goRegister = (lockId, params) => {
+  const goRegister = (lockId, params, screen = 'Register') => {          // ★ 10-20 — 신호등 등록 화면도 같은 길로
     releaseLock(lockId);
     setTimeout(() => {
       try {
-        navigation.navigate('Register', params);
+        navigation.navigate(screen, params);
       } catch (e) {
         showOpenFail('nav ' + (e?.message || ''));
       }
@@ -202,7 +206,12 @@ export default function MapScreen({ navigation }) {
               text: '새로 등록',
               onPress: () => goRegister(id, { location: { lat, lng } })
             },
-            {
+            // ★ 10-20 — 안드로이드 확인창은 버튼 3개까지라 어드민은 취소 대신 신호 등록
+            //   (취소는 바깥 탭·뒤로가기 → onDismiss에서 잠금 해제)
+            isAdminRef.current ? {
+              text: '신호 등록',
+              onPress: () => goRegister(id, { center: { lat, lng } }, 'SignalRegister')
+            } : {
               text: '취소',
               style: 'cancel',
               // 취소는 잠금만 풀고 아무 일도 하지 않는다

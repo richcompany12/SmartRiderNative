@@ -23,6 +23,7 @@ import UpdateGate from './UpdateGate';                              // ★ 새 �
 import TermsGate from './TermsGate';                                // ★ 새 줄 (v6) — 약관 동의 확인
 import RegionGate from './RegionGate';                              // ★ 새 줄 (v6) — 활동 지역 첫 실행 창
 import RegionScreen from './screens/RegionScreen';                  // ★ 새 줄 (v6)
+import SignalRegisterScreen from './screens/SignalRegisterScreen';  // ★ 사거리 신호 순서 등록 (10-20, 어드민)
 import { syncStats } from './statsSync';                            // ★ 새 줄 (v6) — 라이더 통계 (바뀔 때만)
 const Stack = createNativeStackNavigator();
 initAds();                                                          // ★ 새 줄
@@ -58,6 +59,7 @@ function AppNavigator() {
             <Stack.Screen name="Permission" component={PermissionScreen} options={{ headerShown: false }} />
             <Stack.Screen name="DeleteAccount" component={DeleteAccountScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Region" component={RegionScreen} options={{ title: '활동 지역' }} />
+            <Stack.Screen name="SignalRegister" component={SignalRegisterScreen} options={{ headerShown: false }} />
           </>
         ) : (
           <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
