@@ -3,7 +3,8 @@
 //  - 길게 누른 곳 = 사거리 중심 (route.params.center). 수정은 route.params.signalId
 //  - 지도 탭 → 진입로 핀 (정지선 근처). 핀마다 반경 (기본 20m)
 //  - 단계마다 진입로를 직진 / 좌회전 / 직좌로. 우회전은 없음
-//  - 미리보기: "홈에서 보기" 등으로 토스트 아이콘 줄 확인 (CCTV 보면서 검증)
+//  - 진입로 이름은 "정지선 N" (찍은 순서) + 중심 기준 8방위
+//  - 미리보기: "정지선 1에서 보기" 등으로 토스트 아이콘 줄 확인 (CCTV 보면서 검증)
 //  - 서버 signals/ 에 공용 저장 (모두가 내려받음). 라이더 위치는 안 들어감
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -17,11 +18,12 @@ import { useTheme } from '../theme';
 import { useAuth } from '../AuthContext';
 import { getSignal, saveSignal, deleteSignal } from '../firebaseDB';
 import {
-  MOVE_LABEL, APPROACH_NAMES, DEFAULT_RADIUS, MAX_APPROACHES,
+  MOVE_LABEL, DEFAULT_RADIUS, MAX_APPROACHES, approachName, compass8,
 } from '../signalLayout';
 import KeyboardScreen from './KeyboardScreen';
-import SignalIconRow from './SignalIconRow';
+import SignalIconRow, { SignalCompact } from './SignalIconRow';
 import { fixTextKeyboard } from '../keyboardMode';
+import { syncSignalsToService } from '../signalSync';
 
 const KAKAO_API_KEY = '7d65ade73c1b3e7d64687306911f7ce7';
 const MAP_H = Math.round(Dimensions.get('window').height * 0.38);
@@ -85,10 +87,13 @@ export default function SignalRegisterScreen({ navigation, route }) {
   // 지도에 다시 그리기
   useEffect(() => {
     if (!ready || !center) return;
-    webRef.current?.postMessage(JSON.stringify({ type: 'RENDER', center, approaches, selectedKey }));
+    // 지도 핀 라벨은 번호만 ("1", "2" …)
+    const pins = approaches.map((a, i) => ({ ...a, label: String(i + 1) }));
+    webRef.current?.postMessage(JSON.stringify({ type: 'RENDER', center, approaches: pins, selectedKey }));
   }, [ready, center, approaches, selectedKey]);
 
-  const nextName = (list) => APPROACH_NAMES.find(n => !list.some(a => a.name === n)) || ('진입로' + (list.length + 1));
+  // ★ 10-20 — 진입로 이름은 "정지선 N" (찍은 순서). 예전에 저장한 홈·1루 이름도 이걸로 보인다
+  const nameOf = (key) => approachName(Math.max(0, approaches.findIndex(a => a.key === key)));
 
   const onMessage = (event) => {
     let data;
@@ -101,7 +106,7 @@ export default function SignalRegisterScreen({ navigation, route }) {
         return;
       }
       const key = 'a' + Date.now().toString(36);
-      setApproaches([...list, { key, name: nextName(list), lat: data.lat, lng: data.lng, radius: DEFAULT_RADIUS }]);
+      setApproaches([...list, { key, lat: data.lat, lng: data.lng, radius: DEFAULT_RADIUS }]);
       setSelectedKey(key);
       return;
     }
@@ -151,9 +156,10 @@ export default function SignalRegisterScreen({ navigation, route }) {
         id: signalId || undefined,
         name: name.trim() || '사거리',
         center,
-        approaches: approaches.map(({ key, name: n, lat, lng, radius: r }) => ({ key, name: n, lat, lng, radius: r })),
+        approaches: approaches.map(({ key, lat, lng, radius: r }, i) => ({ key, name: approachName(i), lat, lng, radius: r })),
         phases: filled.map(p => ({ moves: p.moves })),
       });
+      syncSignalsToService('저장');                                   // 토스트에 바로 반영
       Alert.alert('저장됨', '신호 순서를 저장했어요.');
       navigation.goBack();
     } catch (e) {
@@ -170,7 +176,7 @@ export default function SignalRegisterScreen({ navigation, route }) {
       { text: '취소', style: 'cancel' },
       {
         text: '삭제', style: 'destructive', onPress: async () => {
-          try { await deleteSignal(signalId); navigation.goBack(); }
+          try { await deleteSignal(signalId); syncSignalsToService('삭제'); navigation.goBack(); }
           catch (e) { Alert.alert('삭제 실패', e.message); }
         },
       },
@@ -236,7 +242,7 @@ export default function SignalRegisterScreen({ navigation, route }) {
           }));
           var el = document.createElement('div');
           el.className = sel ? 'ap sel' : 'ap';
-          el.textContent = a.name;
+          el.textContent = a.label;
           el.addEventListener('click', function(ev) { ev.stopPropagation(); post({ type:'SELECT', key:a.key }); });
           el.addEventListener('touchend', function(ev) { ev.stopPropagation(); ev.preventDefault(); post({ type:'SELECT', key:a.key }); });
           drawn.push(new kakao.maps.CustomOverlay({ position: pos, content: el, map: map, yAnchor: 1.3, clickable: true }));
@@ -299,20 +305,17 @@ export default function SignalRegisterScreen({ navigation, route }) {
 
         <Text style={s.label}>진입로 ({approaches.length}/{MAX_APPROACHES})</Text>
         {approaches.length === 0 && <Text style={s.hint}>아직 없어요. 지도를 눌러 추가하세요.</Text>}
-        {approaches.map(a => (
+        {approaches.map((a, i) => (
           <TouchableOpacity
             key={a.key}
             style={[s.apRow, selectedKey === a.key && s.apRowOn]}
             onPress={() => setSelectedKey(a.key)}
             activeOpacity={0.8}
           >
-            <TextInput
-              style={s.apName}
-              value={a.name}
-              onChangeText={v => updateApproach(a.key, { name: v.slice(0, 6) })}
-              onFocus={() => { setSelectedKey(a.key); fixTextKeyboard(); }}
-              inputMode="text"
-            />
+            <View style={s.apNameBox}>
+              <Text style={s.apName}>{approachName(i)}</Text>
+              <Text style={s.apDir}>{center ? compass8(center, a) : ''}</Text>
+            </View>
             <View style={s.radiusBox}>
               <TouchableOpacity style={s.stepBtn} onPress={() => updateApproach(a.key, { radius: Math.max(10, a.radius - 5) })}>
                 <Icon name="minus" size={18} color={c.text} />
@@ -351,7 +354,7 @@ export default function SignalRegisterScreen({ navigation, route }) {
                 return (
                   <TouchableOpacity key={a.key} style={[s.moveChip, !!mv && s.moveChipOn]} onPress={() => toggleMove(pi, a.key)}>
                     <Text style={[s.moveText, !!mv && s.moveTextOn]}>
-                      {a.name + ' ' + (mv ? MOVE_LABEL[mv] : '-')}
+                      {nameOf(a.key) + ' ' + (mv ? MOVE_LABEL[mv] : '-')}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -372,18 +375,25 @@ export default function SignalRegisterScreen({ navigation, route }) {
               style={[s.tplBtn, previewKey === a.key && s.tplBtnOn]}
               onPress={() => setPreviewKey(a.key)}
             >
-              <Text style={[s.tplText, previewKey === a.key && s.tplTextOn]}>{a.name + '에서 보기'}</Text>
+              <Text style={[s.tplText, previewKey === a.key && s.tplTextOn]}>{nameOf(a.key) + '에서 보기'}</Text>
             </TouchableOpacity>
           ))}
         </View>
         {previewKey && (
           <View style={s.previewBox}>
+            {/* ★ 10-21 — 접힌 토스트 (처음 뜰 때) */}
+            <Text style={s.previewHead}>처음 뜰 때 (접힘)</Text>
+            <SignalCompact
+              signal={{ center, approaches, phases: phases.filter(p => Object.keys(p.moves || {}).length > 0) }}
+              myKey={previewKey}
+            />
+            <Text style={[s.previewHead, { marginTop: space.md }]}>탭하면 (전체 순서)</Text>
             <SignalIconRow
               signal={{ center, approaches, phases: phases.filter(p => Object.keys(p.moves || {}).length > 0) }}
               myKey={previewKey}
             />
             <Text style={s.previewNote}>참고용, 실제 신호를 보고 출발하세요</Text>
-            <Text style={s.hint}>{'주황 = 내 진입로가 움직이는 단계 · 숫자 = 원래 단계 번호'}</Text>
+            <Text style={s.hint}>{'초록 = 내 진입로가 움직이는 단계 · 숫자 = 원래 단계 번호'}</Text>
           </View>
         )}
 
@@ -417,10 +427,9 @@ const makeStyles = (c, font, space, radius, TAP) => StyleSheet.create({
     borderRadius: radius.md, backgroundColor: c.surface, borderWidth: 1.5, borderColor: c.lineStrong,
   },
   apRowOn: { borderColor: '#E8730C' },
-  apName: {
-    width: 74, ...font.body, fontWeight: '600', color: c.text, paddingVertical: 6, paddingHorizontal: 8,
-    backgroundColor: c.field, borderRadius: radius.sm,
-  },
+  apNameBox: { width: 84 },
+  apName: { ...font.body, fontWeight: '600', color: c.text },
+  apDir: { ...font.tiny, color: c.textMuted, marginTop: 1 },
   radiusBox: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.sm },
   stepBtn: {
     width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: c.surfaceSoft,
@@ -460,6 +469,7 @@ const makeStyles = (c, font, space, radius, TAP) => StyleSheet.create({
     backgroundColor: '#FBFAF7', borderWidth: 1, borderColor: c.lineStrong,
   },
   previewNote: { fontSize: 12, color: '#6B675F', marginTop: space.sm },
+  previewHead: { fontSize: 12, fontWeight: '600', color: '#6B675F', marginBottom: 6 },
   btnPrimary: {
     marginTop: space.xl, minHeight: TAP + 4, borderRadius: radius.md, backgroundColor: c.accent,
     alignItems: 'center', justifyContent: 'center',

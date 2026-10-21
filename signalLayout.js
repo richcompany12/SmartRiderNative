@@ -4,12 +4,17 @@
 //
 //  - 나는 항상 아래에서 위로 간다.
 //  - 다른 진입로 화살표는 "중심 → 그 진입로 핀" 방향 차이만큼 돌린다 (실제 각도).
-//  - 내 진입로가 움직이는 단계 = 내 칸 (주황). 나머지 파랑.
+//  - 내 진입로가 움직이는 단계 = 내 칸 (초록, 10-21 주황→초록). 나머지 파랑. 접힌 토스트의 앞 신호는 회색
 //  - 신호는 순환이라 시작점을 돌려서 내 칸을 가운데에 둔다.
 
 export const MOVES = ['S', 'L', 'SL'];                    // 직진 / 좌회전 / 직좌
 export const MOVE_LABEL = { S: '직진', L: '좌회전', SL: '직좌' };
-export const APPROACH_NAMES = ['홈', '1루', '2루', '3루', '5번'];
+// ★ 10-20 — 진입로 이름은 "정지선 N" (찍은 순서). 홈·1루·2루·3루는 대표님·오실장 설명용 말이라 앱엔 안 씀
+export const approachName = (index) => '정지선 ' + (index + 1);
+
+// 중심에서 본 8방위 ("북쪽", "남동쪽" …) — CCTV 보면서 입력할 때 헷갈리지 않게
+const DIR8 = ['북쪽', '북동쪽', '동쪽', '남동쪽', '남쪽', '남서쪽', '서쪽', '북서쪽'];
+export const compass8 = (center, point) => DIR8[Math.round(bearingDeg(center, point) / 45) % 8];
 export const DEFAULT_RADIUS = 20;
 export const MAX_APPROACHES = 5;
 
@@ -66,4 +71,49 @@ export const arrangePhases = (phases, myKey) => {
     out.push({ index: idx, mine: mine[idx] });
   }
   return out;
+};
+
+// ★ 10-21 — 접힌 토스트: "앞 신호 1칸 → 내 차례 칸들"
+//   내 차례 = 첫 번째 내 칸 묶음 (연달아 2개면 2개 다). 앞 신호 = 그 바로 전 단계 (순환)
+//   반환: { prev: 단계 번호 | null, mine: [단계 번호…] }. 내 칸이 없으면 mine = []
+//   전부 내 칸이면 앞 신호 없음
+export const collapsedPhases = (phases, myKey) => {
+  const n = phases.length;
+  const mine = phases.map(p => movesIn(p, myKey));
+  const count = mine.filter(Boolean).length;
+  if (n === 0 || count === 0) return { prev: null, mine: [] };
+  if (count === n) return { prev: null, mine: phases.map((_, i) => i) };
+  let start = 0;
+  for (let i = 0; i < n; i++) {
+    if (mine[i] && !mine[(i - 1 + n) % n]) { start = i; break; }
+  }
+  const run = [];
+  for (let k = 0; k < n && mine[(start + k) % n]; k++) run.push((start + k) % n);
+  return { prev: (start - 1 + n) % n, mine: run };
+};
+
+// 회전 각도 → 내 기준 방향 말. 오거리 실제 각도도 가장 가까운 말로
+//   180 = 맞은편, -90 = 오른쪽에서 오는 차, +90 = 왼쪽에서 오는 차
+export const sideWord = (rot) => {
+  const r = Math.round(rot / 90) * 90;
+  if (r === 0) return '같은 방향';
+  if (r === 90) return '왼쪽';
+  if (r === -90) return '오른쪽';
+  return '맞은편';
+};
+
+// 앞 신호 글자: "맞은편 직좌", "맞은편·왼쪽 직진", "맞은편 직좌 · 왼쪽 직진"
+export const prevCaption = (signal, myKey, phaseIndex) => {
+  const approaches = signal.approaches || [];
+  const mineA = approaches.find(a => a.key === myKey);
+  const moves = signal.phases?.[phaseIndex]?.moves || {};
+  if (!mineA) return '';
+  const byMove = {};
+  for (const [key, mv] of Object.entries(moves)) {
+    const ap = approaches.find(a => a.key === key);
+    if (!ap) continue;
+    const word = sideWord(relAngle(signal.center, mineA, ap, approaches.length));
+    (byMove[mv] = byMove[mv] || []).push(word);
+  }
+  return MOVES.filter(mv => byMove[mv]).map(mv => byMove[mv].join('·') + ' ' + MOVE_LABEL[mv]).join(' · ');
 };

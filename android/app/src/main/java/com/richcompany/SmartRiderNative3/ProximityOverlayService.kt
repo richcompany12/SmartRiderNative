@@ -55,7 +55,25 @@ class ProximityOverlayService : Service() {
         val view: View,
         val params: WindowManager.LayoutParams,
         var pinned: Boolean = false,
-        var dismissRunnable: Runnable? = null
+        var dismissRunnable: Runnable? = null,
+        val kind: String = KIND_BUILDING      // ★ 10-20 — 쌓는 순서: 카메라 → 건물 → 신호
+    )
+
+    // ★ 10-20 — 사거리 신호 순서 (JS signalSync.js가 넘겨줌)
+    private data class SigApproach(
+        val key: String,
+        val name: String,
+        val lat: Double,
+        val lng: Double,
+        val radius: Double
+    )
+    private data class SignalPoint(
+        val id: String,
+        val name: String,
+        val lat: Double,
+        val lng: Double,
+        val approaches: List<SigApproach>,
+        val phases: List<Map<String, String>>   // 단계 순서대로 { 진입로 key → "S" | "L" | "SL" }
     )
 
     // 판정에 쓰는 건물 하나
@@ -97,6 +115,10 @@ class ProximityOverlayService : Service() {
     private var alertExitRadius = 200.0
     private var alertSoundOn = true
 
+    private var signalPoints: List<SignalPoint> = emptyList()   // ★ 10-20
+    private val sigDwellMap = HashMap<String, Long>()             // ★ 10-20 — "사거리id|진입로key" 반경 안에 처음 들어온 시각
+    private val sigShown = HashSet<String>()                       // ★ 10-21 — 이미 보여준 사거리 (반경 2배 밖으로 나가면 지움)
+
     private val dwellMap = HashMap<String, Long>()      // 반경 안에 처음 들어온 시각
     private val cooldownMap = HashMap<String, Long>()   // 마지막으로 토스트 띄운 시각
 
@@ -137,6 +159,11 @@ class ProximityOverlayService : Service() {
         const val ACTION_DISMISS_ALL = "com.richcompany.smartridernative3.DISMISS_TOASTS"
         const val ACTION_SET_BUILDINGS = "com.richcompany.smartridernative3.SET_BUILDINGS"
         const val ACTION_SET_ALERTS = "com.richcompany.smartridernative3.SET_ALERTS"
+        const val ACTION_SET_SIGNALS = "com.richcompany.smartridernative3.SET_SIGNALS"   // ★ 10-20
+        const val KIND_ALERT = "alert"          // ★ 10-20 — 토스트 종류 (위에서부터 이 순서)
+        const val KIND_BUILDING = "building"
+        const val KIND_SIGNAL = "signal"
+        const val COMPACT_CELL = 40f            // ★ 10-21 — 접힌 신호 토스트 칸 크기(dp). 미리보기 COMPACT 와 같게
         const val ACTION_CLEAR_MUTES = "com.richcompany.smartridernative3.CLEAR_MUTES"
         const val ACTION_REQUEST_MUTE_COUNT = "com.richcompany.smartridernative3.REQ_MUTE_COUNT"
         const val EXTRA_PAYLOAD = "payload"
@@ -232,6 +259,10 @@ class ProximityOverlayService : Service() {
             ACTION_SET_ALERTS -> {
                 val json = intent.getStringExtra(EXTRA_PAYLOAD)
                 if (json != null) handler.post { setAlertPoints(json) }
+            }
+            ACTION_SET_SIGNALS -> {                                                // ★ 10-20
+                val json = intent.getStringExtra(EXTRA_PAYLOAD)
+                if (json != null) handler.post { setSignals(json) }
             }
             ACTION_CLEAR_MUTES -> handler.post { clearAllMutes() }
             ACTION_REQUEST_MUTE_COUNT -> handler.post { emitMuteCount() }
@@ -374,6 +405,43 @@ class ProximityOverlayService : Service() {
         }
     }
 
+    // ★ 10-20 — 사거리 신호 순서 목록
+    private fun setSignals(json: String) {
+        try {
+            val arr = JSONObject(json).getJSONArray("signals")
+            val list = ArrayList<SignalPoint>(arr.length())
+            for (i in 0 until arr.length()) {
+                val s = arr.getJSONObject(i)
+                val apArr = s.optJSONArray("approaches") ?: continue
+                val aps = ArrayList<SigApproach>()
+                for (j in 0 until apArr.length()) {
+                    val a = apArr.getJSONObject(j)
+                    val lat = a.optDouble("lat", Double.NaN)
+                    val lng = a.optDouble("lng", Double.NaN)
+                    if (lat.isNaN() || lng.isNaN()) continue
+                    aps.add(SigApproach(a.optString("key", ""), a.optString("name", ""), lat, lng, a.optDouble("radius", 20.0)))
+                }
+                val phArr = s.optJSONArray("phases") ?: continue
+                val phases = ArrayList<Map<String, String>>()
+                for (j in 0 until phArr.length()) {
+                    val o = phArr.optJSONObject(j) ?: continue
+                    val m = HashMap<String, String>()
+                    val keys = o.keys()
+                    while (keys.hasNext()) { val k = keys.next(); m[k] = o.optString(k, "") }
+                    if (m.isNotEmpty()) phases.add(m)
+                }
+                val lat = s.optDouble("lat", Double.NaN)
+                val lng = s.optDouble("lng", Double.NaN)
+                if (lat.isNaN() || lng.isNaN() || aps.size < 2 || phases.isEmpty()) continue
+                list.add(SignalPoint(s.optString("id", ""), s.optString("name", "사거리"), lat, lng, aps, phases))
+            }
+            signalPoints = list
+            android.util.Log.d(TAG, "사거리 신호 수신: ${list.size}개")
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "사거리 신호 파싱 실패: " + e.message)
+        }
+    }
+
     // ────────────────────────────────────────────
     //  위치 수신 + 판정
     // ────────────────────────────────────────────
@@ -455,6 +523,11 @@ class ProximityOverlayService : Service() {
         //   속도·체류 조건이 없고, 건물 목록이 비어 있어도 동작해야 하므로
         //   아래 buildings.isEmpty() 검사보다 먼저 실행한다.
         checkAlerts(lat, lng)
+
+        // ★ 10-20 — 사거리 신호도 건물 목록과 상관없이 판정 (따로 try)
+        try { checkSignals(lat, lng, speed, now) } catch (e: Exception) {
+            android.util.Log.e(TAG, "사거리 신호 판정 실패: " + e.message)
+        }
 
         if (buildings.isEmpty()) {
             android.util.Log.d(TAG, "위치 수신했으나 건물 목록이 비어있음")
@@ -540,6 +613,337 @@ class ProximityOverlayService : Service() {
         handler.post {
             try { showToast(payload) } catch (e: Exception) { e.printStackTrace() }
         }
+    }
+
+    // ────────────────────────────────────────────
+    //  ★ 10-20 — 사거리 신호 순서
+    //  건물 토스트와 같은 조건: 진입로 핀 반경 안 3초 + 9km/h 미만.
+    //  반경이 겹치면 더 가까운 핀.
+    //  ★ 10-21 — 한 번 뜬 사거리는 모든 정지선의 반경 2배 밖으로 나갔다 와야 다시 뜸 (5분 쿨다운 대신.
+    //           주차해 두고 쉬어도 다시 안 뜨고, GPS가 경계에서 흔들려도 들락날락 안 함)
+    //  위치 비교는 폰 안에서만 (서버로 안 보냄)
+    // ────────────────────────────────────────────
+
+    private fun checkSignals(lat: Double, lng: Double, speed: Double, now: Long) {
+        if (signalPoints.isEmpty()) return
+
+        var best: SignalPoint? = null
+        var bestAp: SigApproach? = null
+        var bestDist = Double.MAX_VALUE
+        for (sg in signalPoints) {
+            var farFromAll = true
+            for (ap in sg.approaches) {
+                val key = sg.id + "|" + ap.key
+                val d = distanceMeters(lat, lng, ap.lat, ap.lng)
+                if (d <= ap.radius * 2) farFromAll = false
+                if (d <= ap.radius) {
+                    if (!sigDwellMap.containsKey(key)) sigDwellMap[key] = now
+                    if (d < bestDist) { bestDist = d; best = sg; bestAp = ap }
+                } else {
+                    sigDwellMap.remove(key)
+                }
+            }
+            if (farFromAll && sigShown.remove(sg.id)) {
+                android.util.Log.d(TAG, "신호 재무장 — ${sg.name}")
+            }
+        }
+        val sg = best ?: return
+        val ap = bestAp ?: return
+
+        val dwell = now - (sigDwellMap[sg.id + "|" + ap.key] ?: now)
+        val okSpeed = speed < SPEED_THRESHOLD
+        val okDwell = dwell > DWELL_TIME
+        android.util.Log.d(TAG, "신호 반경내 ${sg.name}(${ap.name}) 거리${bestDist.toInt()}m " +
+                "속도${String.format("%.1f", speed)}${if (okSpeed) "O" else "X"} " +
+                "체류${dwell / 1000}초${if (okDwell) "O" else "X"}")
+        if (!okSpeed || !okDwell) return
+
+        if (sigShown.contains(sg.id)) {
+            android.util.Log.d(TAG, "신호 이미 보여줌 — 반경 2배 밖으로 나갔다 와야 다시")
+            return
+        }
+        sigShown.add(sg.id)
+        android.util.Log.d(TAG, "🚦 신호 토스트 발사! ${sg.name}(${ap.name})")
+        handler.post {
+            try { showSignalToast(sg, ap) } catch (e: Exception) {
+                android.util.Log.e(TAG, "신호 토스트 실패: " + e.message)
+            }
+        }
+    }
+
+    // 중심에서 본 방향 (정북 0도, 시계방향) — signalLayout.js bearingDeg 와 같은 계산
+    private fun bearingDeg(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
+        val p1 = Math.toRadians(lat1)
+        val p2 = Math.toRadians(lat2)
+        val dl = Math.toRadians(lng2 - lng1)
+        val y = sin(dl) * cos(p2)
+        val x = cos(p1) * sin(p2) - sin(p1) * cos(p2) * cos(dl)
+        return (Math.toDegrees(atan2(y, x)) + 360.0) % 360.0
+    }
+
+    // 내 진입로 기준 회전 (시계방향 +). 진입로 4개 이하는 90도 단위, 오거리(5개)만 실제 각도 — relAngle 과 같게
+    private fun relAngle(sg: SignalPoint, mine: SigApproach, other: SigApproach): Float {
+        val r = bearingDeg(sg.lat, sg.lng, other.lat, other.lng) - bearingDeg(sg.lat, sg.lng, mine.lat, mine.lng)
+        val deg = ((r % 360.0) + 540.0) % 360.0 - 180.0
+        if (sg.approaches.size >= 5) return deg.toFloat()
+        var snapped = Math.round(deg / 90.0) * 90.0
+        if (snapped == -180.0) snapped = 180.0
+        return snapped.toFloat()
+    }
+
+    // 내 칸을 가운데로 돌린 순서 — arrangePhases 와 같은 계산
+    //   시작 칸 = (전체 - 내 칸 수 + 1) / 2 버림. 떨어져 있으면 첫 묶음 기준
+    private fun arrangePhases(phases: List<Map<String, String>>, myKey: String): List<Pair<Int, Boolean>> {
+        val n = phases.size
+        val mine = phases.map { it.containsKey(myKey) }
+        val count = mine.count { it }
+        if (n == 0 || count == 0 || count == n) return phases.indices.map { Pair(it, mine[it]) }
+        var start = 0
+        for (i in 0 until n) {
+            if (mine[i] && !mine[(i - 1 + n) % n]) { start = i; break }
+        }
+        var k = 0
+        while (k < n && mine[(start + k) % n]) k++
+        val target = (n - k + 1) / 2
+        return (0 until n).map { j ->
+            val idx = (((start - target + j) % n) + n) % n
+            Pair(idx, mine[idx])
+        }
+    }
+
+    // ★ 10-21 — 접힌 토스트: 앞 신호(바로 전 단계) → 내 차례(첫 묶음, 연달아면 다) — collapsedPhases 와 같게
+    //   반환: Pair(앞 신호 단계 | null, 내 차례 단계들)
+    private fun collapsedPhases(phases: List<Map<String, String>>, myKey: String): Pair<Int?, List<Int>> {
+        val n = phases.size
+        val mine = phases.map { it.containsKey(myKey) }
+        val count = mine.count { it }
+        if (n == 0 || count == 0) return Pair(null, emptyList())
+        if (count == n) return Pair(null, phases.indices.toList())
+        var start = 0
+        for (i in 0 until n) {
+            if (mine[i] && !mine[(i - 1 + n) % n]) { start = i; break }
+        }
+        val run = ArrayList<Int>()
+        var k = 0
+        while (k < n && mine[(start + k) % n]) { run.add((start + k) % n); k++ }
+        return Pair((start - 1 + n) % n, run)
+    }
+
+    private fun moveLabel(m: String): String = when (m) { "S" -> "직진"; "L" -> "좌회전"; else -> "직좌" }
+
+    // 회전 → 내 기준 방향 말 (sideWord 와 같게). 180 맞은편 / -90 오른쪽 / +90 왼쪽
+    private fun sideWord(rot: Float): String = when (Math.round(rot / 90.0).toInt() * 90) {
+        0 -> "같은 방향"
+        90 -> "왼쪽"
+        -90 -> "오른쪽"
+        else -> "맞은편"
+    }
+
+    // 앞 신호 글자 (prevCaption 과 같게): "맞은편 직좌", "맞은편·왼쪽 직진", "맞은편 직좌 · 왼쪽 직진"
+    private fun prevCaption(sg: SignalPoint, mine: SigApproach, phaseIdx: Int): String {
+        val byMove = LinkedHashMap<String, MutableList<String>>()
+        for ((key, mv) in sg.phases[phaseIdx]) {
+            val ap = sg.approaches.firstOrNull { it.key == key } ?: continue
+            byMove.getOrPut(mv) { ArrayList() }.add(sideWord(relAngle(sg, mine, ap)))
+        }
+        return listOf("S", "L", "SL").filter { byMove.containsKey(it) }
+            .joinToString(" · ") { byMove[it]!!.joinToString("·") + " " + moveLabel(it) }
+    }
+
+    // 접힌 상태 화면: [앞 신호 회색 칸] → [내 차례 초록 칸(내 화살표만)…]
+    private fun buildSignalCompact(sg: SignalPoint, mine: SigApproach): View {
+        val (prev, mineIdx) = collapsedPhases(sg.phases, mine.key)
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.TOP          // 위 라벨 높이가 같아서 칸 줄이 맞는다 (아래 글자가 두 줄이어도)
+        }
+        fun label(text: String, color: Int, size: Float, bold: Boolean) = TextView(this).apply {
+            this.text = text
+            setTextColor(color)
+            textSize = size
+            gravity = Gravity.CENTER
+            if (bold) setTypeface(typeface, android.graphics.Typeface.BOLD)
+        }
+        fun column(head: String?, headColor: Int, cell: View, caption: String, capColor: Int, capBold: Boolean): LinearLayout =
+            LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
+                if (head != null) addView(label(head, headColor, 11f, false).apply { setPadding(0, 0, 0, dp(3)) })
+                addView(cell)
+                addView(label(caption, capColor, if (capBold) 12f else 11f, capBold).apply {
+                    setPadding(0, dp(3), 0, 0)
+                    maxWidth = dp(110)
+                })
+            }
+
+        if (mineIdx.isEmpty()) {
+            row.addView(label("이 정지선은 움직이는 단계가 없어요", SignalIconsView.GRAY, 12f, false))
+            return row
+        }
+
+        if (prev != null) {
+            val prevArrows = sg.phases[prev].entries.mapNotNull { (key, move) ->
+                val ap = sg.approaches.firstOrNull { it.key == key } ?: return@mapNotNull null
+                SignalIconsView.Arrow(move, relAngle(sg, mine, ap), SignalIconsView.GRAY)
+            }
+            // ★ 10-21 — 접힌 칸 40 (52였을 땐 펼친 것보다 더 커 보였음)
+            val prevCell = SignalIconsView(this, listOf(SignalIconsView.Cell(null, SignalIconsView.GRAY, prevArrows)), COMPACT_CELL)
+            row.addView(column("앞 신호", SignalIconsView.GRAY, prevCell, prevCaption(sg, mine, prev), SignalIconsView.GRAY, false))
+            row.addView(label("→", SignalIconsView.GRAY, 18f, false).apply {
+                setPadding(dp(6), dp(22), dp(6), 0)     // 라벨(약 17) + 칸 가운데쯤
+            })
+        }
+
+        // 내 차례: 라벨 하나 + 칸들 (내 화살표만, 초록)
+        val mineBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+        }
+        mineBox.addView(label("내 차례", SignalIconsView.GREEN, 11f, true).apply { setPadding(0, 0, 0, dp(3)) })
+        val mineRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        mineIdx.forEachIndexed { i, idx ->
+            val mv = sg.phases[idx][mine.key] ?: "S"
+            val cell = SignalIconsView(this, listOf(SignalIconsView.Cell(null, SignalIconsView.GREEN,
+                listOf(SignalIconsView.Arrow(mv, 0f, SignalIconsView.GREEN)))), COMPACT_CELL)
+            val col = column(null, 0, cell, moveLabel(mv), SignalIconsView.GREEN, true)
+            if (i > 0) col.setPadding(dp(8), 0, 0, 0)
+            mineRow.addView(col)
+        }
+        mineBox.addView(mineRow)
+        row.addView(mineBox)
+        return row
+    }
+
+    // 신호 토스트 — 건물 토스트 틀(toast_card) 그대로, 메모 자리에 아이콘 줄
+    private fun showSignalToast(sg: SignalPoint, mine: SigApproach) {
+        val id = "signal_" + sg.id + "_" + System.currentTimeMillis()
+        makeRoom()
+
+        val view = LayoutInflater.from(this).inflate(R.layout.toast_card, null)
+        val nameView = view.findViewById<TextView>(R.id.toast_name)
+        val memoView = view.findViewById<TextView>(R.id.toast_memo)
+        val closeView = view.findViewById<TextView>(R.id.toast_close)
+        val hintView = view.findViewById<TextView>(R.id.toast_hint)
+        view.findViewById<TextView>(R.id.toast_dist).visibility = View.GONE
+        memoView.visibility = View.GONE
+
+        // 사거리 이름만. 내 진입로는 앱이 이미 맞춰서 보여주니 안 붙인다 (10-20 대표님)
+        nameView.text = sg.name
+
+        // ★ 10-21 — 접힌 상태(앞 신호 → 내 차례) + 펼친 상태(전체 순서). 탭으로 바꾼다
+        val cells = arrangePhases(sg.phases, mine.key).map { (idx, isMine) ->
+            val moves = sg.phases[idx]
+            val arrows = moves.entries
+                .sortedBy { if (it.key == mine.key) 1 else 0 }          // 다른 방향 먼저, 내 방향을 맨 위에
+                .mapNotNull { (key, move) ->
+                    val ap = sg.approaches.firstOrNull { it.key == key } ?: return@mapNotNull null
+                    val rot = if (key == mine.key) 0f else relAngle(sg, mine, ap)
+                    // ★ 10-21 — 내 방향만 초록, 나머지는 회색 (접힌 상태와 같은 색. 파랑 안 씀)
+                    SignalIconsView.Arrow(move, rot, if (key == mine.key) SignalIconsView.GREEN else SignalIconsView.GRAY)
+                }
+            SignalIconsView.Cell(idx + 1, if (isMine) SignalIconsView.GREEN else SignalIconsView.GRAY, arrows)
+        }
+        val expanded = SignalIconsView(this, cells)
+        expanded.visibility = View.GONE
+        val compact = buildSignalCompact(sg, mine)
+
+        val parent = memoView.parent as ViewGroup
+        val at = parent.indexOfChild(memoView)
+        val lpC = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        lpC.topMargin = dp(8)
+        lpC.gravity = Gravity.CENTER_HORIZONTAL
+        parent.addView(compact, at, lpC)
+        val lpE = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        lpE.topMargin = dp(8)
+        parent.addView(expanded, at + 1, lpE)
+
+        val hintCollapsed = "참고용, 실제 신호를 보고 출발하세요\n탭하면 고정 · 전체 순서 ▾"
+        val hintExpanded = "참고용, 실제 신호를 보고 출발하세요\n탭하면 접기 ▴"
+        hintView.text = hintCollapsed
+        hintView.textSize = 12f
+        hintView.visibility = View.VISIBLE
+
+        val params = WindowManager.LayoutParams(
+            dp(300),
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.END
+            x = dp(10)
+            y = dp(56) + activeToasts.size * dp(CARD_HEIGHT_ESTIMATE)
+        }
+
+        val entry = ToastEntry(view, params, kind = KIND_SIGNAL)
+        activeToasts[id] = entry
+        closeView.setOnClickListener { removeToast(id) }
+
+        var startX = 0f
+        var startParamX = 0
+        var isDragging = false
+        view.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    startX = event.rawX
+                    startParamX = params.x
+                    isDragging = false
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = event.rawX - startX
+                    if (abs(dx) > 10 && !isDragging) isDragging = true
+                    if (isDragging && dx < 0) {
+                        params.x = (startParamX - dx).toInt()
+                        try { windowManager.updateViewLayout(view, params) } catch (e: Exception) {}
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (isDragging) {
+                        // 스와이프 → 접혔든 펼쳤든 사라짐
+                        if (abs(event.rawX - startX) > 80) removeToast(id)
+                        else {
+                            params.x = dp(10)
+                            try { windowManager.updateViewLayout(view, params) } catch (e: Exception) {}
+                        }
+                    } else if (!entry.pinned) {
+                        // 탭 1번 → 고정(주황 테두리, 타이머 멈춤) + 펼침
+                        entry.pinned = true
+                        view.setBackgroundResource(R.drawable.toast_bg_pinned)
+                        entry.dismissRunnable?.let { handler.removeCallbacks(it) }
+                        compact.visibility = View.GONE
+                        expanded.visibility = View.VISIBLE
+                        hintView.text = hintExpanded
+                    } else {
+                        // 다시 탭 → 고정 풀림 + 접힘, 자동 닫기 타이머 다시 시작
+                        entry.pinned = false
+                        view.setBackgroundResource(R.drawable.toast_bg_blue)
+                        expanded.visibility = View.GONE
+                        compact.visibility = View.VISIBLE
+                        hintView.text = hintCollapsed
+                        entry.dismissRunnable?.let {
+                            handler.removeCallbacks(it)
+                            handler.postDelayed(it, AUTO_DISMISS)
+                        }
+                    }
+                    true
+                }
+                else -> false
+            }
+        }
+
+        try {
+            windowManager.addView(view, params)
+            watchHeight(view)
+            playToastClick()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        val dismissRunnable = Runnable { removeToast(id) }
+        entry.dismissRunnable = dismissRunnable
+        handler.postDelayed(dismissRunnable, AUTO_DISMISS)
     }
 
     // ────────────────────────────────────────────
@@ -726,11 +1130,16 @@ class ProximityOverlayService : Service() {
     private fun showAlertToast(point: AlertPoint, dist: Double) {
         val id = "alert_" + point.id + "_" + System.currentTimeMillis()
         if (activeToasts.containsKey(id)) return
+        makeRoom()                                                    // ★ 10-20 — 카메라 토스트도 최대 3개 안에서
 
         try {
+            // ★ 10-21 — 후면·양방향(rear)은 얇게: 아이콘 + "후면 단속 카메라" 한 줄. 이름·거리·안내 빼고
+            //   나머지 종류(전방·주차·기타)는 그대로
+            val thin = point.type == "rear"
             val root = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(dp(14), dp(12), dp(14), dp(12))
+                if (thin) setPadding(dp(14), dp(8), dp(10), dp(8))
+                else setPadding(dp(14), dp(12), dp(14), dp(12))
                 background = GradientDrawable().apply {
                     cornerRadius = dp(14).toFloat()
                     setColor(Color.parseColor("#FBFAF7"))
@@ -740,26 +1149,46 @@ class ProximityOverlayService : Service() {
                 elevation = dp(8).toFloat()
             }
 
-            root.addView(TextView(this).apply {
-                text = typeLabel(point.type)
-                setTextColor(Color.parseColor("#C62828"))
-                textSize = 22f
-            })
-
-            root.addView(TextView(this).apply {
-                text = point.name + "  " + dist.toInt() + "m"
-                setTextColor(Color.parseColor("#1A1A18"))
-                textSize = 15f
-                setPadding(0, dp(5), 0, 0)
-            })
-
             val hint = TextView(this).apply {
                 text = "탭 → 알림 끄기 · 밀어서 닫기"
                 setTextColor(Color.parseColor("#9A968C"))
                 textSize = 11f
                 setPadding(0, dp(8), 0, 0)
             }
-            root.addView(hint)
+
+            if (thin) {
+                root.addView(LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    addView(TextView(this@ProximityOverlayService).apply {
+                        text = "📷"
+                        textSize = 20f
+                        setPadding(0, 0, dp(8), 0)
+                    })
+                    addView(TextView(this@ProximityOverlayService).apply {
+                        text = "후면 단속 카메라"
+                        setTextColor(Color.parseColor("#C62828"))
+                        textSize = 19f
+                        setTypeface(typeface, android.graphics.Typeface.BOLD)
+                        maxLines = 2
+                    })
+                })
+            } else {
+                root.addView(TextView(this).apply {
+                    text = typeLabel(point.type)
+                    setTextColor(Color.parseColor("#C62828"))
+                    textSize = 22f
+                })
+
+                root.addView(TextView(this).apply {
+                    text = point.name + "  " + dist.toInt() + "m"
+                    setTextColor(Color.parseColor("#1A1A18"))
+                    textSize = 15f
+                    setPadding(0, dp(5), 0, 0)
+                })
+
+                root.addView(hint)
+            }
 
             // 탭하면 나타나는 두 개의 선택지
             fun muteButton(label: String, action: () -> Unit): TextView =
@@ -803,7 +1232,7 @@ class ProximityOverlayService : Service() {
                 y = dp(56) + activeToasts.size * dp(CARD_HEIGHT_ESTIMATE)
             }
 
-            val entry = ToastEntry(root, params)
+            val entry = ToastEntry(root, params, kind = KIND_ALERT)   // ★ 10-20 — 맨 위
             activeToasts[id] = entry
 
             var startX = 0f
@@ -850,6 +1279,7 @@ class ProximityOverlayService : Service() {
             }
 
             windowManager.addView(root, params)
+            watchHeight(root)                                         // ★ 10-20 — 카메라는 맨 위로 다시 쌓기
 
             val dismissRunnable = Runnable { removeToast(id) }
             entry.dismissRunnable = dismissRunnable
@@ -1456,9 +1886,7 @@ class ProximityOverlayService : Service() {
         val id = payload.getString("id")
         if (activeToasts.containsKey(id)) return
 
-        if (activeToasts.size >= MAX_TOASTS) {
-            activeToasts.keys.firstOrNull()?.let { removeToast(it) }
-        }
+        makeRoom()                                                    // ★ 10-20 — 넘치면 카메라 토스트부터 뺌
 
         val view = LayoutInflater.from(this).inflate(R.layout.toast_card, null)
         val nameView = view.findViewById<TextView>(R.id.toast_name)
@@ -1625,6 +2053,7 @@ class ProximityOverlayService : Service() {
 
         try {
             windowManager.addView(view, params)
+            watchHeight(view)                                         // ★ 10-20 — 실제 높이로 쌓기
             playToastClick()                                          // ★ 새 줄
         } catch (e: Exception) {
             e.printStackTrace()
@@ -1643,12 +2072,43 @@ class ProximityOverlayService : Service() {
         repositionToasts()
     }
 
+    // ★ 10-20 — 위에서부터 카메라 → 건물 → 신호 순서. 같은 종류는 먼저 뜬 것이 위.
+    //   높이는 실제 토스트 크기로 잰다 (예전엔 한 장 170dp로 어림잡아 큰 토스트가 겹쳤음)
+    private fun kindOrder(kind: String): Int = when (kind) {
+        KIND_ALERT -> 0
+        KIND_BUILDING -> 1
+        else -> 2
+    }
+
     private fun repositionToasts() {
-        var index = 0
-        for ((_, entry) in activeToasts) {
-            entry.params.y = dp(56) + index * dp(CARD_HEIGHT_ESTIMATE)
+        var y = dp(56)
+        val ordered = activeToasts.values.withIndex()
+            .sortedWith(compareBy({ kindOrder(it.value.kind) }, { it.index }))
+            .map { it.value }
+        for (entry in ordered) {
+            entry.params.y = y
             try { windowManager.updateViewLayout(entry.view, entry.params) } catch (e: Exception) {}
-            index++
+            val h = if (entry.view.height > 0) entry.view.height else dp(CARD_HEIGHT_ESTIMATE)
+            y += h + dp(8)
+        }
+    }
+
+    // ★ 10-20 — 토스트 높이가 정해지거나 바뀌면 다시 쌓는다
+    private fun watchHeight(view: View) {
+        view.addOnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
+            if (bottom - top != oldBottom - oldTop) handler.post { repositionToasts() }
+        }
+        view.post { repositionToasts() }
+    }
+
+    // ★ 10-20 — 최대 3개. 넘치면 가장 오래된 카메라 토스트부터 뺀다 (없으면 건물, 그다음 신호)
+    private fun makeRoom() {
+        while (activeToasts.size >= MAX_TOASTS) {
+            val victim = activeToasts.entries.firstOrNull { it.value.kind == KIND_ALERT }
+                ?: activeToasts.entries.firstOrNull { it.value.kind == KIND_BUILDING }
+                ?: activeToasts.entries.firstOrNull()
+                ?: return
+            removeToast(victim.key)
         }
     }
 

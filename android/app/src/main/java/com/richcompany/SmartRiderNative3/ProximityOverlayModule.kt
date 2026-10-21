@@ -156,6 +156,31 @@ class ProximityOverlayModule(private val reactContext: ReactApplicationContext)
         }
     }
 
+    // ★ 10-20 — 사거리 신호 순서를 서비스에 넘긴다 (전달은 signalSync.js 하나로만)
+    // payloadJson 형식: {"signals":[{"id","name","lat","lng","approaches":[{key,name,lat,lng,radius}],"phases":[{key:"S"|"L"|"SL"}]}]}
+    @ReactMethod
+    fun setSignals(payloadJson: String, promise: Promise) {
+        try {
+            if (!hasLocationPermission()) {
+                android.util.Log.d(TAG, "위치 권한 없음 - 사거리 신호 전달 취소")
+                promise.resolve("no_permission")
+                return
+            }
+            val intent = Intent(reactContext, ProximityOverlayService::class.java).apply {
+                action = ProximityOverlayService.ACTION_SET_SIGNALS
+                putExtra(ProximityOverlayService.EXTRA_PAYLOAD, payloadJson)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                reactContext.startForegroundService(intent)
+            } else {
+                reactContext.startService(intent)
+            }
+            promise.resolve("success")
+        } catch (e: Exception) {
+            promise.reject("ERROR", e.message)
+        }
+    }
+
     // ── 안 보기로 한 지점 ──
 
     // "안 보기로 한 지점" 전체 해제 (설정 화면에서 호출)

@@ -150,7 +150,8 @@ git push
   - 키보드 공통 부품: 입력 화면은 ScrollView 대신 `screens/KeyboardScreen.js` / 숫자판 규칙 `keyboardMode.js`(`markKeyboard`·`fixTextKeyboard`) / 전환 버튼 `screens/KeyboardToggle.js`. **새 입력 화면도 이걸 쓴다.** `KeyboardAvoidingView` 새로 쓰지 말 것 (edge-to-edge라 안드로이드에서 안 먹음)
   - 따로 뜨는 창(Modal)에 입력칸이 있으면 **가운데 말고 위쪽**에 둔다 (Sidebar 비번 창·ShortcutBar 편집 창)
   - **메인폰(안드17) 키보드 재확인은 비공개 테스트로 받아서** (메인폰 설치 금지)
-- **다음 업데이트에 같이 올릴 것** (목록은 `docs/기획요약.md` 2-0 끝): 검색칸 안내 문구 "이름, 초성, 숫자" + 한 줄 고정 (`SearchScreen.js`, 10-19 코드 완료). 올릴 땐 versionCode 8 / `APP_VERSION_CODE` 8 / versionName 새로
+- **다음 업데이트에 같이 올릴 것** (목록은 `docs/기획요약.md` 2-0 끝): 검색칸 안내 문구 "이름, 초성, 숫자" + 한 줄 고정 (`SearchScreen.js`, 10-19 코드 완료) / **사거리 신호 순서** (기획요약 2-2, 개발문서 3-7판 1-00000000장, 공기계 개발 중) / 후면 카메라 토스트 얇게 + 토스트 쌓기 정리.
+  - 신호 계산은 JS `signalLayout.js`와 코틀린(`ProximityOverlayService.kt` `arrangePhases`·`collapsedPhases`·`relAngle`·`prevCaption`, `SignalIconsView.kt`)이 **같아야 함**. 사거리 전달은 `signalSync.js` `syncSignalsToService` 하나로만. Firebase 규칙 `signals` 있음 (10-20) 올릴 땐 versionCode 8 / `APP_VERSION_CODE` 8 / versionName 새로
 - **v6 (1.0.4)** AAB `D:\app\배포보관\smartrider_v6_20261008.aab`. **`meta/minVersionCode = 6`은 게시 후 바로 켜지 않음** — 1~2주 지켜보고 대표님이 결정 (켤 땐 테스터 공지 먼저, 10-08 결정)
   - 제출 때 Play Console 경고 3개 → **v7 목록** (R8, Android 15 edge-to-edge, 대형 화면 세로 고정)
 - v5 AAB: `D:\app\배포보관\smartrider_v5_20260929.aab`

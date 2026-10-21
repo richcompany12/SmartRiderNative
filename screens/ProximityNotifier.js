@@ -5,6 +5,7 @@ import { AppState, NativeModules, DeviceEventEmitter } from 'react-native';
 import { StackActions } from '@react-navigation/native';
 import { getCachedBuildings } from '../buildingsCache';
 import { syncAlertsToService } from '../alertSync';            // ★ 바뀐 줄 — 알림 전달은 alertSync 하나로
+import { syncSignalsToService } from '../signalSync';           // ★ 10-20 — 사거리 신호 전달은 이것 하나로
 import { getRadius, getSettings } from '../settingsCache';
 import { navigateTo, navigationRef } from '../navigationRef';
 
@@ -112,6 +113,7 @@ export default function ProximityNotifier() {
     // 서비스가 뜨는 데 잠깐 걸리므로 조금 기다렸다 건물 전달
     setTimeout(() => syncBuildings('최초'), 1500);
     setTimeout(() => syncAlerts('최초'), 1800);
+    setTimeout(() => syncSignalsToService('최초'), 2100);          // ★ 10-20 — 사거리 신호 (따로 try)
   };
 
   // 네비게이터가 아직 준비 안 됐을 수 있으므로 몇 번 재시도한다.
@@ -196,6 +198,7 @@ export default function ProximityNotifier() {
 
       syncBuildings('앱 복귀');
       syncAlerts('앱 복귀');
+      syncSignalsToService('앱 복귀');                              // ★ 10-20
     });
 
     return () => {
