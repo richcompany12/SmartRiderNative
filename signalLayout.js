@@ -1,6 +1,7 @@
 // signalLayout.js
 // ★ 사거리 신호 순서 (10-20) — 아이콘 줄 계산. 등록 화면 미리보기가 쓴다.
-// ⚠️ 코틀린 토스트(ProximityOverlayService.kt)도 똑같은 계산을 한다. 한쪽을 바꾸면 다른 쪽도 같이.
+// ⚠️ 같은 계산이 세 군데 있다: 앱 이 파일 / 코틀린 토스트(ProximityOverlayService.kt) / 웹 어드민(D:\app\SmartRiderAdmin\src\signalLayout.js, 이 파일 복사본)
+//    하나 고치면 셋 다 고친다. 웹 쪽은 이 파일을 그대로 다시 복사하면 된다.
 //
 //  - 나는 항상 아래에서 위로 간다.
 //  - 다른 진입로 화살표는 "중심 → 그 진입로 핀" 방향 차이만큼 돌린다 (실제 각도).
